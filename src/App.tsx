@@ -11,7 +11,10 @@ import {
   SunsetCard,
   DetailsGrid,
 } from "./components/Panels";
+import { VerificationPanel } from "./components/VerificationPanel";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
+import { recordForecast } from "./lib/verification/store";
+import { reconcile, scorecard, type Scorecard } from "./lib/verification/verify";
 import { loadWeather } from "./lib/weather";
 import { locateDevice } from "./lib/providers/device";
 import { fallbackBundle } from "./lib/fallback";
@@ -37,6 +40,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [score, setScore] = useState<Scorecard | null>(null);
 
   const search = usePlaceSearch(query);
 
@@ -66,6 +70,37 @@ export default function App() {
     void weather.load(DEFAULT_PLACE);
     // Intentionally once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Archive each live forecast the moment it renders, then score whatever has elapsed.
+  // Recording must happen before the outcome is knowable — scoring against data fetched
+  // after the fact would prove nothing.
+  useEffect(() => {
+    const bundle = weather.data;
+    if (!bundle.live || !bundle.ensemble.live) return;
+
+    const ctrl = new AbortController();
+    void (async () => {
+      recordForecast({
+        lat: bundle.place.lat,
+        lon: bundle.place.lon,
+        members: bundle.ensemble.memberSeries ?? [],
+        validTimes: bundle.hourly.map((h) => h.time),
+        live: true,
+      });
+      try {
+        await reconcile(ctrl.signal);
+      } catch {
+        // Verification is a side channel; a failure here must not disturb the forecast.
+      }
+      if (!ctrl.signal.aborted) setScore(scorecard());
+    })();
+
+    return () => ctrl.abort();
+  }, [weather.data]);
+
+  useEffect(() => {
+    setScore(scorecard());
   }, []);
 
   const locate = useCallback(async () => {
@@ -128,6 +163,12 @@ export default function App() {
             <SunsetCard day={today} />
           </div>
         </div>
+
+        {score && (
+          <div className="mt-4">
+            <VerificationPanel score={score} />
+          </div>
+        )}
 
         <DetailsGrid current={current} />
 

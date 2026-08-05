@@ -17,6 +17,43 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **Backdrop reacts to conditions** — night city bokeh, rain streaks on glass when it's actually
   raining. Respects `prefers-reduced-motion`.
 
+## Verification
+
+Most weather apps render a probability and never revisit it. This one scores its own
+forecasts.
+
+Every live forecast is archived per-hour **before the outcome is knowable**. Once an hour
+elapses, the observed value is fetched and the archive is scored:
+
+| Metric | Question it answers |
+| --- | --- |
+| **Brier score** | Are the stated probabilities accurate? |
+| **Brier skill score** | Does the forecast beat climatology, or would ignoring it be better? |
+| **Murphy decomposition** | Is it miscalibrated (reliability) or merely uninformative (resolution)? |
+| **CRPS** | Is the whole predictive distribution honest, not just the headline probability? |
+| **Reliability diagram** | Of every time it said 30%, did it happen 30% of the time? |
+| **Rank histogram** | Is the ensemble spread right, or is the truth landing outside it? |
+
+Three deliberate choices worth calling out:
+
+- **The decomposition reports its residual.** `BS = REL − RES + UNC` is exact only when
+  bins group identical probabilities. Binning a continuous forecast leaves a within-bin
+  variance/covariance term. It is reported rather than absorbed, because a decomposition
+  that doesn't sum to the score it decomposes isn't one.
+- **CRPS uses the fair (Ferro) estimator by default.** The biased form systematically
+  rewards small ensembles for being under-dispersed, so it can't compare a 31-member
+  ensemble against a 51-member one like for like.
+- **Rank histogram ties resolve to the middle of the tied block.** Precipitation produces
+  many exactly-zero members; always breaking ties one way manufactures an edge spike that
+  reads as under-dispersion when it's an artefact.
+
+Scores below 100 samples are labelled provisional in the UI. Synthetic members are never
+scored — only real ensemble forecasts enter the archive.
+
+**Limitations, stated plainly.** Verification uses Open-Meteo's best-estimate analysis
+rather than station observations, and the archive lives in `localStorage`, so scores
+reflect one device's usage rather than a shared record.
+
 ## Data sources
 
 Every source is keyless and CORS-enabled, which is why this needs no backend.
@@ -75,6 +112,10 @@ src/
     search.ts        provider fan-out, merge, de-duplication, ranking
     ensemble.ts      quantiles and ensemble summarisation
     weather.ts       forecast assembly; ensembleFor() is the provider seam
+    verification/
+      metrics.ts     Brier, Murphy decomposition, CRPS, rank histogram
+      store.ts       localStorage forecast archive, sealed before outcomes
+      verify.ts      observation reconciliation and scorecard assembly
     units.ts         conversion, colour ramp, formatting
     wmo.ts           WMO 4677 code decoding
     providers/       one adapter per external service, typed at the boundary
@@ -102,9 +143,9 @@ npm run dev
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 54 unit tests
+npm test            # 89 unit tests
 npm run build
-npm run size        # gzipped JS budget, currently 58 kB against a 90 kB ceiling
+npm run size        # gzipped JS budget, currently 62 kB against a 90 kB ceiling
 ```
 
 CI runs all four on every push and pull request.
@@ -112,7 +153,9 @@ CI runs all four on every push and pull request.
 Tests cover the parts where being wrong is silent: quantile interpolation against known
 type-7 values, ensemble threshold semantics, postal-shape classification including the
 ambiguous 5-digit case, abort and retry policy, circuit-breaker behaviour, and the
-de-duplication merge.
+de-duplication merge, and every verification metric against hand-computed analytic
+values — CRPS reducing to absolute error for a single member, the decomposition identity
+reconstructing the Brier score, and the rank histogram's tie handling.
 
 ## Deploying
 

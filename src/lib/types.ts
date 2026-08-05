@@ -65,6 +65,8 @@ export interface EnsembleSummary {
   source: string;
   /** False when members are synthetic. Never present synthetic data as real. */
   live: boolean;
+  /** Raw member-major series, retained only for verification archiving. */
+  memberSeries?: number[][];
 }
 
 export interface WeatherBundle {

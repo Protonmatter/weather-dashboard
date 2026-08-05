@@ -15,7 +15,7 @@ export async function ensembleFor(
 ): Promise<EnsembleSummary> {
   try {
     const members = await fetchEnsemble(lat, lon, signal);
-    return { ...ensembleStats(members), source: "GFS ensemble", live: true };
+    return { ...ensembleStats(members), source: "GFS ensemble", live: true, memberSeries: members };
   } catch (err) {
     if (isAbort(err)) throw err;
     return {
