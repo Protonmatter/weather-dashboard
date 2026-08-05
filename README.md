@@ -65,12 +65,54 @@ it at a different provider and everything downstream works unchanged. Adding IFS
 alongside GFS means concatenating member arrays before `ensembleStats` — though at that point
 you want dependence-aware weighting rather than treating members as exchangeable across centers.
 
+## Architecture
+
+```
+src/
+  lib/
+    http.ts          abort, timeout, backoff, circuit breaking, TTL cache
+    query.ts         query shape classification (city / postal / coords)
+    search.ts        provider fan-out, merge, de-duplication, ranking
+    ensemble.ts      quantiles and ensemble summarisation
+    weather.ts       forecast assembly; ensembleFor() is the provider seam
+    units.ts         conversion, colour ramp, formatting
+    wmo.ts           WMO 4677 code decoding
+    providers/       one adapter per external service, typed at the boundary
+  hooks/useSearch.ts abort-on-supersede + sequence guarding
+  components/        presentational only
+```
+
+Every network call goes through `lib/http.ts`. It aborts superseded requests, times out
+hung sockets, retries only transient faults (never a 4xx, never an abort), opens a circuit
+breaker after repeated provider failures, and caches within published rate limits.
+
+`hooks/useSearch.ts` carries two independent guards against out-of-order resolution: the
+previous request is aborted when a new one starts, and a monotonic sequence number gates
+the `setState`. Abort alone is insufficient — an in-flight response can still resolve — so
+the sequence check is what actually guarantees only the newest query writes to state.
+
 ## Running locally
 
 ```bash
 npm install
 npm run dev
 ```
+
+## Verification
+
+```bash
+npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
+npm test            # 54 unit tests
+npm run build
+npm run size        # gzipped JS budget, currently 58 kB against a 90 kB ceiling
+```
+
+CI runs all four on every push and pull request.
+
+Tests cover the parts where being wrong is silent: quantile interpolation against known
+type-7 values, ensemble threshold semantics, postal-shape classification including the
+ambiguous 5-digit case, abort and retry policy, circuit-breaker behaviour, and the
+de-duplication merge.
 
 ## Deploying
 

@@ -9,3 +9,34 @@ body,
   margin: 0;
   background: #0d1a2e;
 }
+
+.rainstreak {
+  width: 1.5px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.9));
+  animation-name: fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes fall {
+  0% { transform: translate3d(0, -18vh, 0); }
+  100% { transform: translate3d(-6vh, 112vh, 0); }
+}
+
+.hscroll::-webkit-scrollbar { height: 0; }
+.hscroll { scrollbar-width: none; }
+
+.fadein { animation: fadein 0.5s ease both; }
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+input::placeholder { color: rgba(255, 255, 255, 0.5); }
+:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 2px; border-radius: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rainlayer { display: none; }
+  .fadein { animation: none; }
+}
