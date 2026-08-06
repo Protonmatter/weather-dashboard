@@ -40,3 +40,40 @@ input::placeholder { color: rgba(255, 255, 255, 0.5); }
   .rainlayer { display: none; }
   .fadein { animation: none; }
 }
+
+/* ---- Presentation targets (RFC 0001 §5) ------------------------------------ */
+
+/* Phone: single column, larger tap targets, no hover dependence. */
+[data-target="phone"] button,
+[data-target="phone"] [role="option"] > button {
+  min-height: 44px; /* WCAG 2.5.5 target size */
+}
+
+[data-target="phone"] .hscroll {
+  scroll-snap-type: x proximity;
+}
+[data-target="phone"] .hscroll > ul > li {
+  scroll-snap-align: start;
+}
+
+/* 16:9 desktop: denser panels, richer motion, crisper imagery. */
+[data-target="cinema"] {
+  --panel-radius: 28px;
+}
+[data-target="cinema"] section {
+  padding: 1.25rem 1.4rem;
+}
+
+@media (min-resolution: 2dppx) {
+  /* Avoid over-blurring backdrop layers on high-DPI panels. */
+  .rainstreak { width: 1px; }
+}
+
+/* Honour the OS preference over any capability tier. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

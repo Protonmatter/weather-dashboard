@@ -1,30 +1,169 @@
+# Delivery pipeline — RFC 0001 §4.
+#
+# Each job answers one question. A red build should tell you *what kind* of thing broke
+# before you open the log: static, unit, regression, contract, functional, smoke,
+# dependency, or budget.
+
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Nightly. Contract and dependency jobs exist to catch drift that happens on someone
+    # else's schedule: provider schemas and CVE disclosures.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
 
 jobs:
-  verify:
+  static:
+    name: Static analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
+        with: { node-version: "20", cache: npm }
       - run: npm ci
-
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
+  unit:
+    name: Unit + regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Unit, validation and regression suites
+        run: npm test -- --reporter=verbose
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-results
+          path: test-results/
+          if-no-files-found: ignore
 
-      - name: Build
-        run: npm run build
+  dependencies:
+    name: Dependency + licence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Audit and licence allow-list
+        run: npm run deps
+      - name: Fail on lockfile drift
+        run: git diff --exit-code package-lock.json
 
+  build:
+    name: Build + budget + smoke
+    runs-on: ubuntu-latest
+    needs: [static, unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - run: npm run build
       - name: Bundle size budget
         run: npm run size
+      - name: Smoke test the built artefact
+        run: npm run smoke
+      - uses: actions/upload-artifact@v4
+        with: { name: dist, path: dist, retention-days: 7 }
+
+  e2e:
+    name: Functional (E2E)
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, webkit, iphone, android]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Install browser
+        run: npx playwright install --with-deps
+      - run: npm run build
+      - name: Run ${{ matrix.project }} journeys
+        run: npx playwright test --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-${{ matrix.project }}
+          path: playwright-report/
+          retention-days: 7
+
+  contract:
+    name: Provider contracts
+    # Network-dependent by design. Runs on main and nightly, not on every PR, so an
+    # upstream hiccup cannot block an unrelated contributor's pull request.
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Validate live provider schemas
+        run: npm run contract
+        env:
+          RUN_CONTRACT_TESTS: "1"
+
+  deploy:
+    name: Deploy to Pages
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, e2e, dependencies]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  post-deploy-smoke:
+    name: Post-deploy smoke
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the deployed site responds and mounts
+        run: |
+          URL="${{ needs.deploy.outputs.page_url || 'https://protonmatter.github.io/weather-dashboard/' }}"
+          echo "probing $URL"
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 20 "$URL" | grep -q 'id="root"'; then
+              echo "post-deploy smoke: PASS"
+              exit 0
+            fi
+            echo "attempt $i failed; retrying"
+            sleep 10
+          done
+          echo "post-deploy smoke: FAIL"
+          exit 1

@@ -6,3 +6,6 @@ dist
 *.log
 .vite
 tsconfig.tsbuildinfo
+playwright-report
+test-results
+/opt/pw-browsers

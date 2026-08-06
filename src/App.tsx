@@ -13,6 +13,7 @@ import {
 } from "./components/Panels";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
+import { useViewport } from "./hooks/useViewport";
 import { recordForecast } from "./lib/verification/store";
 import { reconcile, scorecard, type Scorecard } from "./lib/verification/verify";
 import { loadWeather } from "./lib/weather";
@@ -43,6 +44,7 @@ export default function App() {
   const [score, setScore] = useState<Scorecard | null>(null);
 
   const search = usePlaceSearch(query);
+  const target = useViewport();
 
   const loader = useCallback(
     (place: Place, signal: AbortSignal): Promise<WeatherBundle> => loadWeather(place, signal),
@@ -119,6 +121,14 @@ export default function App() {
     }
   }, [pick]);
 
+  // RFC 0001 section 5: one codebase, three targets. Mobile-first defaults widen at
+  // tablet and go denser and fuller-bleed on a 16:9 desktop.
+  const layout = {
+    phone: { max: 520, main: "minmax(0, 1fr)", side: "minmax(0, 1fr)", pad: "px-3 py-4", gap: "gap-3" },
+    tablet: { max: 1180, main: "repeat(auto-fit, minmax(280px, 1fr))", side: "repeat(auto-fit, minmax(220px, 1fr))", pad: "px-4 py-6 sm:px-6 sm:py-8", gap: "gap-4" },
+    cinema: { max: 1760, main: "minmax(360px, 1fr) minmax(0, 2fr)", side: "repeat(auto-fit, minmax(260px, 1fr))", pad: "px-10 py-10", gap: "gap-5" },
+  }[target];
+
   const data = weather.data;
   const { current, hourly, daily, place, aqi, ensemble } = data;
   const cond = decodeWMO(current.code, current.isDay);
@@ -129,7 +139,7 @@ export default function App() {
     <div className="relative w-full min-h-screen text-white" style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}>
       <Backdrop wet={cond.wet} isDay={current.isDay} storm={cond.storm} />
 
-      <div className="relative mx-auto px-4 py-6 sm:px-6 sm:py-8" style={{ maxWidth: 1180 }}>
+      <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }} data-target={target}>
         <SearchBar
           query={query}
           onQuery={setQuery}
@@ -154,9 +164,9 @@ export default function App() {
         <Hero place={place} current={current} today={today} hourly={hourly} T={T} />
         <HourlyStrip hourly={hourly} T={T} />
 
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.main }}>
           <TenDayForecast daily={daily} current={current} T={T} />
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.side }}>
             <AirQualityCard aqi={aqi} wet={cond.wet} />
             <PrecipitationCard ens={ensemble} hourly={hourly} />
             <UvCard uv={today?.uv ?? 0} />

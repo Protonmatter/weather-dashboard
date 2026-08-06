@@ -11,7 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "size": "node scripts/size-budget.mjs"
+    "size": "node scripts/size-budget.mjs",
+    "e2e": "playwright test",
+    "smoke": "node scripts/smoke.mjs",
+    "deps": "node scripts/deps-check.mjs",
+    "contract": "RUN_CONTRACT_TESTS=1 vitest run src/lib/__tests__/contract.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.383.0",
@@ -19,14 +23,16 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.5.3",
-    "vite": "^5.3.1",
-    "vitest": "^2.0.5"
+    "vite": "^7.1.5",
+    "vitest": "^3.2.4"
   }
 }

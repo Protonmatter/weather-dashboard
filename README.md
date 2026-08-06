@@ -17,6 +17,61 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **Backdrop reacts to conditions** — night city bokeh, rain streaks on glass when it's actually
   raining. Respects `prefers-reduced-motion`.
 
+## Specification
+
+Design decisions live in `docs/`, written before implementation:
+
+- [RFC 0001 — Verification Depth, Delivery Pipeline, and Presentation Targets](docs/rfcs/0001-verification-and-delivery.md)
+- [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
+
+## Pipeline
+
+Eight jobs, each answering one question, so a red build says *what kind* of thing broke
+before you open the log.
+
+| Job | Question | When |
+| --- | --- | --- |
+| Static | Does it typecheck? | every push |
+| Unit + regression | Is the math right, and did fixed defects stay fixed? | every push |
+| Dependency | Any high/critical CVEs or licence drift? | every push + nightly |
+| Build + budget + smoke | Does it build, fit the budget, and boot? | every push |
+| Functional (E2E) | Do real journeys work in Chromium, WebKit, iPhone, Pixel? | every push |
+| Contract | Do live provider schemas still match our parsers? | main + nightly |
+| Deploy | — | main only |
+| Post-deploy smoke | Did the deployed site actually mount? | after deploy |
+
+Contract and dependency jobs run nightly because provider schemas and CVE disclosures
+happen on someone else's schedule. Contract tests are excluded from PR runs so an upstream
+hiccup cannot block an unrelated contributor.
+
+```bash
+npm run typecheck   # static
+npm test            # unit, validation, regression — 130 tests
+npm run contract    # live provider schemas — 5 tests, network required
+npm run e2e         # functional journeys — 12 per browser project
+npm run smoke       # built artefact boots
+npm run deps        # audit + licence allow-list
+npm run size        # gzip budget
+```
+
+## Presentation targets
+
+One codebase, three targets, selected by `matchMedia` — never user-agent sniffing.
+
+| Target | Viewport | Treatment |
+| --- | --- | --- |
+| Phone | ≤767px | Single column, 44px minimum tap targets (WCAG 2.5.5), scroll-snap on the hourly strip |
+| Tablet / laptop | 768–1599px | Two-column auto-fit grid |
+| Desktop 16:9 | ≥1600px and ≥16:10 | Denser panels, wider gutters, full-bleed presentation |
+
+E2E asserts each: iPhone 15 and Pixel 7 viewports render without horizontal overflow, and
+1920×1080 switches to the cinema layout.
+
+**WebGPU is deliberately not used.** See ADR 0002 — the current scene is CSS gradients and
+sub-100-element SVG, which the compositor already handles on the GPU. A capability probe
+(`lib/gpu/capability.ts`) ships so the decision can be revisited with measurement. The
+falsifiable threshold is specified: a particle advection field at ≥50k particles, 60fps.
+
 ## Verification
 
 Most weather apps render a probability and never revisit it. This one scores its own
@@ -33,6 +88,13 @@ elapses, the observed value is fetched and the archive is scored:
 | **CRPS** | Is the whole predictive distribution honest, not just the headline probability? |
 | **Reliability diagram** | Of every time it said 30%, did it happen 30% of the time? |
 | **Rank histogram** | Is the ensemble spread right, or is the truth landing outside it? |
+| **PIT histogram** | The continuous analogue, handling precipitation's atom at zero |
+| **Spread–skill ratio** | Is dispersion right, with the (n+1)/n finite-size correction? |
+| **Hersbach decomposition** | CRPS = reliability + potential: miscalibrated, or just hard? |
+| **Block bootstrap CI** | How much of this score is sampling noise? |
+| **Diebold–Mariano** | Is one forecast *significantly* better, under autocorrelation? |
+| **ROC / AUC** | Can it discriminate events at all, independent of calibration? |
+| **Ignorance score** | A strictly proper local rule, clipped so one miss can't dominate |
 
 Three deliberate choices worth calling out:
 
@@ -46,6 +108,14 @@ Three deliberate choices worth calling out:
 - **Rank histogram ties resolve to the middle of the tied block.** Precipitation produces
   many exactly-zero members; always breaking ties one way manufactures an edge spike that
   reads as under-dispersion when it's an artefact.
+- **Spread–skill applies the Fortin et al. (2014) (n+1)/n correction.** Without it every
+  finite ensemble looks under-dispersed — a 5-member one by 10%.
+- **Confidence intervals use a moving-block bootstrap**, not i.i.d. Consecutive hourly
+  scores share weather regimes; resampling individual observations destroys the dependence
+  that inflates the true variance and yields intervals that are far too narrow.
+- **Diebold–Mariano carries the Harvey–Leybourne–Newbold small-sample correction** and a
+  Newey–West HAC variance. Without HLN the test over-rejects badly below a few hundred
+  observations — exactly the regime a personal archive occupies.
 
 Scores below 100 samples are labelled provisional in the UI. Synthetic members are never
 scored — only real ensemble forecasts enter the archive.
@@ -143,9 +213,9 @@ npm run dev
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 89 unit tests
+npm test            # 130 tests
 npm run build
-npm run size        # gzipped JS budget, currently 62 kB against a 90 kB ceiling
+npm run size        # gzipped JS budget, currently 63 kB against a 90 kB ceiling
 ```
 
 CI runs all four on every push and pull request.
