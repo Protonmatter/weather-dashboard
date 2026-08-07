@@ -74,6 +74,8 @@ export interface EnsembleSummary {
   live: boolean;
   /** Raw member-major series, retained only for verification archiving. */
   memberSeries?: number[][];
+  /** Raw member-major temperature series (°F), retained only for verification archiving. Live path only. */
+  tempMemberSeries?: number[][];
   /**
    * Per-hour temperature spread across ensemble members, aligned to the 24h hourly axis.
    * Present ONLY on the live path — a synthetic ensemble never fabricates a temperature band.

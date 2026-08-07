@@ -89,6 +89,7 @@ export default function App() {
         members: bundle.ensemble.memberSeries ?? [],
         validTimes: bundle.hourly.map((h) => h.time),
         live: true,
+        tempMembers: bundle.ensemble.tempMemberSeries,
       });
       try {
         await reconcile(ctrl.signal);

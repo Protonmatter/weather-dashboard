@@ -21,6 +21,7 @@ export async function ensembleFor(
       source: "GFS ensemble",
       live: true,
       memberSeries: precip,
+      ...(temp.length ? { tempMemberSeries: temp } : {}),
       ...(tempSpread.length ? { tempSpread } : {}),
     };
   } catch (err) {

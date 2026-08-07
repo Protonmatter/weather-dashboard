@@ -26,6 +26,10 @@ export interface ForecastRecord {
   live: boolean;
   /** Observed precipitation, inches. Undefined until verified. */
   observed?: number;
+  /** Member temperatures, °F, rounded to 0.1. Absent when the model omitted temperature. */
+  tMembers?: number[];
+  /** Observed temperature, °F. Undefined until verified. */
+  tObserved?: number;
 }
 
 const KEY = "wx.verification.v1";
@@ -77,6 +81,8 @@ export interface RecordInput {
   /** Valid times aligned to the hour axis of `members`. */
   validTimes: readonly Date[];
   live: boolean;
+  /** Member-major hourly temperatures (°F), same axis as `members`. Optional: models may omit it. */
+  tempMembers?: readonly (readonly number[])[];
 }
 
 /**
@@ -100,6 +106,12 @@ export function recordForecast(input: RecordInput, now = Date.now()): number {
     const members = input.members.map((m) => m[h] ?? 0);
     const wet = members.filter((v) => v >= MEASURABLE_HOURLY).length;
 
+    // 0.1 °F is two orders of magnitude below GFS ensemble spread; rounding at write
+    // time bounds archive growth without perturbing CRPS (RFC 0002 §3.1).
+    const tMembers = input.tempMembers?.length
+      ? input.tempMembers.map((m) => Math.round((m[h] ?? 0) * 10) / 10)
+      : undefined;
+
     added.push({
       loc,
       issued: now,
@@ -107,6 +119,7 @@ export function recordForecast(input: RecordInput, now = Date.now()): number {
       p: wet / members.length,
       members,
       live: true,
+      ...(tMembers ? { tMembers } : {}),
     });
   });
 
@@ -133,6 +146,10 @@ export function applyObservations(observations: ReadonlyMap<string, number>): nu
 
 export const verifiedRecords = (archive: readonly ForecastRecord[]): ForecastRecord[] =>
   archive.filter((r) => r.observed !== undefined && r.live);
+
+/** Records scoreable on the temperature track: live, observed, and holding a real member set. */
+export const tempVerifiedRecords = (archive: readonly ForecastRecord[]): ForecastRecord[] =>
+  archive.filter((r) => r.live && r.tObserved !== undefined && (r.tMembers?.length ?? 0) > 1);
 
 export function clearArchive(): void {
   try {
