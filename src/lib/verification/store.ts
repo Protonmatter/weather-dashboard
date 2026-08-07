@@ -127,17 +127,39 @@ export function recordForecast(input: RecordInput, now = Date.now()): number {
   return added.length;
 }
 
-/** Attach observations to records whose valid time has passed. */
-export function applyObservations(observations: ReadonlyMap<string, number>): number {
+/** One elapsed hour of analysis: precipitation always, temperature when the response had it. */
+export interface ObservedHour {
+  /** Observed precipitation, inches. */
+  precip: number;
+  /** Observed temperature, °F. Absent when the response omitted it. */
+  temp?: number;
+}
+
+/**
+ * Attach observations to records whose valid time has passed. Each variable fills
+ * independently — a record may gain its temperature on a later pass than its
+ * precipitation if a response omitted one array — and neither is ever overwritten.
+ */
+export function applyObservations(observations: ReadonlyMap<string, ObservedHour>): number {
   const archive = loadArchive();
   let filled = 0;
 
   const updated = archive.map((r) => {
-    if (r.observed !== undefined) return r;
     const obs = observations.get(`${r.loc}@${r.valid}`);
     if (obs === undefined) return r;
+
+    const wantPrecip = r.observed === undefined;
+    // Temperature observations are only stored where members exist to score them
+    // against; a sealed precip-only record would carry the value as dead weight.
+    const wantTemp = r.tObserved === undefined && obs.temp !== undefined && !!r.tMembers?.length;
+    if (!wantPrecip && !wantTemp) return r;
+
     filled++;
-    return { ...r, observed: obs };
+    return {
+      ...r,
+      ...(wantPrecip ? { observed: obs.precip } : {}),
+      ...(wantTemp ? { tObserved: obs.temp } : {}),
+    };
   });
 
   if (filled) saveArchive(updated);

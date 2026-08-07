@@ -83,14 +83,29 @@ d("contract: Photon", () => {
 });
 
 d("contract: Open-Meteo past analysis", () => {
-  it("returns elapsed hours for verification", async () => {
+  it("returns elapsed hours for verification, with temperature in the unit we asked for", async () => {
     const j = await getJson(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
-        `&hourly=precipitation&past_days=7&forecast_days=1&precipitation_unit=inch&timezone=auto`
+        `&hourly=precipitation,temperature_2m&past_days=7&forecast_days=1` +
+        `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`
     );
     const hourly = j["hourly"] as Record<string, unknown[]>;
     const times = hourly["time"] as string[];
     const past = times.filter((t) => new Date(t).getTime() < Date.now());
     expect(past.length).toBeGreaterThan(100);
+
+    // The unit trap (RFC 0002 §3.3): the endpoint echoes the unit it actually applied.
+    // If this stops containing °F, temperature verification is silently scoring Celsius.
+    const units = j["hourly_units"] as Record<string, string>;
+    expect(units["temperature_2m"]).toContain("F");
+
+    const temps = hourly["temperature_2m"] as (number | null)[];
+    expect(temps.length).toBe(times.length);
+    const elapsed = temps.slice(0, past.length).filter((v): v is number => v !== null);
+    expect(elapsed.length).toBeGreaterThan(100);
+    for (const v of elapsed) {
+      expect(v).toBeGreaterThan(-80);
+      expect(v).toBeLessThan(140);
+    }
   }, 30_000);
 });

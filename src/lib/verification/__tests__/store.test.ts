@@ -3,9 +3,11 @@ import {
   recordForecast,
   loadArchive,
   saveArchive,
+  applyObservations,
   tempVerifiedRecords,
   locKey,
   type ForecastRecord,
+  type ObservedHour,
 } from "../store";
 
 /**
@@ -113,6 +115,67 @@ describe("recordForecast", () => {
       members: [0.1, 0],
       live: true,
     });
+  });
+});
+
+describe("applyObservations", () => {
+  const sealed: ForecastRecord = {
+    loc: "37.44,-122.14",
+    issued: NOW - 2 * HOUR,
+    valid: NOW - HOUR,
+    p: 0.5,
+    members: [0.1, 0],
+    live: true,
+    tMembers: [68, 70],
+  };
+  const key = `${sealed.loc}@${sealed.valid}`;
+
+  it("fills precipitation and temperature from one observed hour", () => {
+    saveArchive([sealed]);
+    const filled = applyObservations(new Map([[key, { precip: 0.02, temp: 69.4 }]]));
+    expect(filled).toBe(1);
+    const r = loadArchive()[0];
+    expect(r?.observed).toBe(0.02);
+    expect(r?.tObserved).toBe(69.4);
+  });
+
+  it("fills temperature on a record whose precipitation was observed earlier", () => {
+    saveArchive([{ ...sealed, observed: 0.02 }]);
+    const filled = applyObservations(new Map([[key, { precip: 0.02, temp: 69.4 }]]));
+    expect(filled).toBe(1);
+    expect(loadArchive()[0]?.tObserved).toBe(69.4);
+  });
+
+  it("never overwrites an existing observation", () => {
+    saveArchive([{ ...sealed, observed: 0.02, tObserved: 69.4 }]);
+    const filled = applyObservations(new Map([[key, { precip: 9, temp: 99 }]]));
+    expect(filled).toBe(0);
+    const r = loadArchive()[0];
+    expect(r?.observed).toBe(0.02);
+    expect(r?.tObserved).toBe(69.4);
+  });
+
+  it("leaves temperature unset when the observed hour omits it", () => {
+    saveArchive([sealed]);
+    applyObservations(new Map([[key, { precip: 0.02 }]]));
+    const r = loadArchive()[0];
+    expect(r?.observed).toBe(0.02);
+    expect(r?.tObserved).toBeUndefined();
+  });
+
+  it("does not attach a temperature observation to a record without members to score it", () => {
+    const { tMembers: _tm, ...precipOnly } = sealed;
+    void _tm;
+    saveArchive([precipOnly]);
+    applyObservations(new Map([[key, { precip: 0.02, temp: 69.4 }]]));
+    const r = loadArchive()[0];
+    expect(r?.observed).toBe(0.02);
+    expect(r?.tObserved).toBeUndefined();
+  });
+
+  it("returns 0 for an empty observation map", () => {
+    saveArchive([sealed]);
+    expect(applyObservations(new Map<string, ObservedHour>())).toBe(0);
   });
 });
 

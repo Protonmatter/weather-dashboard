@@ -4,13 +4,14 @@ import {
   loadArchive,
   applyObservations,
   verifiedRecords,
+  tempVerifiedRecords,
   locKey,
   type ForecastRecord,
+  type ObservedHour,
 } from "./store";
 import {
   brierScore,
   brierSkillScore,
-  brierSkillScore as _bss,
   murphyDecomposition,
   meanCrps,
   rankHistogram,
@@ -21,8 +22,16 @@ import {
   type ReliabilityBin,
   type MurphyDecomposition,
 } from "./metrics";
-
-void _bss;
+import {
+  hersbachDecomposition,
+  spreadSkillRatio,
+  pitValues,
+  pitHistogram,
+  blockBootstrapCI,
+  crpsSeries,
+  type Interval,
+  type SpreadSkill,
+} from "./advanced";
 
 /**
  * Sample size below which scores are reported but visibly marked as provisional.
@@ -43,6 +52,26 @@ export interface Scorecard {
   confident: boolean;
   /** Distinct locations contributing, for honesty about generalisation. */
   locations: number;
+  /** Temperature track (RFC 0002). Null until a temperature-verified record exists. */
+  temp: TempScorecard | null;
+}
+
+/** Scores for the continuous temperature track. All temperatures in °F. */
+export interface TempScorecard {
+  samples: number;
+  locations: number;
+  /** Mean fair CRPS, °F. */
+  crps: number;
+  /** Moving-block bootstrap interval on the CRPS mean — scores are serially dependent. */
+  crpsCI: Interval;
+  /** Hersbach split: crps ≈ reliability + potential. Lower reliability is better. */
+  reliability: number;
+  /** CRPS achievable after perfect recalibration. The irreducible part. */
+  potential: number;
+  spreadSkill: SpreadSkill;
+  /** 10-bin PIT histogram. Uniform under calibration. */
+  pit: number[];
+  confident: boolean;
 }
 
 /**
@@ -56,24 +85,34 @@ async function fetchObserved(
   lat: number,
   lon: number,
   signal?: AbortSignal
-): Promise<Map<string, number>> {
+): Promise<Map<string, ObservedHour>> {
+  // temperature_unit is NOT inherited from anywhere: omit it and temperature_2m arrives
+  // in Celsius, and every CRPS downstream is plausibly-sized and wrong (RFC 0002 §3.3).
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&hourly=precipitation&past_days=14&forecast_days=1&precipitation_unit=inch&timezone=auto`;
+    `&hourly=precipitation,temperature_2m&past_days=14&forecast_days=1` +
+    `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`;
 
-  const j = await fetchJson<{ hourly: { time: string[]; precipitation: (number | null)[] } }>(url, {
-    signal,
-    cacheTtlMs: 1_800_000,
-  });
+  const j = await fetchJson<{
+    hourly: {
+      time: string[];
+      precipitation: (number | null)[];
+      temperature_2m?: (number | null)[];
+    };
+  }>(url, { signal, cacheTtlMs: 1_800_000 });
 
   const loc = locKey(lat, lon);
-  const out = new Map<string, number>();
+  const out = new Map<string, ObservedHour>();
   const now = Date.now();
 
   j.hourly.time.forEach((t, i) => {
     const at = new Date(t).getTime();
     if (at >= now) return; // an unelapsed hour is not an observation
-    out.set(`${loc}@${at}`, j.hourly.precipitation[i] ?? 0);
+    const temp = j.hourly.temperature_2m?.[i];
+    out.set(`${loc}@${at}`, {
+      precip: j.hourly.precipitation[i] ?? 0,
+      ...(temp !== null && temp !== undefined ? { temp } : {}),
+    });
   });
 
   return out;
@@ -95,7 +134,7 @@ export async function reconcile(signal?: AbortSignal): Promise<number> {
   const locs = pendingLocations(archive);
   if (locs.length === 0) return 0;
 
-  const merged = new Map<string, number>();
+  const merged = new Map<string, ObservedHour>();
 
   await Promise.allSettled(
     locs.slice(0, 5).map(async (loc) => {
@@ -109,6 +148,32 @@ export async function reconcile(signal?: AbortSignal): Promise<number> {
   );
 
   return applyObservations(merged);
+}
+
+function tempScorecard(archive: readonly ForecastRecord[]): TempScorecard | null {
+  // Sorted by valid time: the moving-block bootstrap assumes serial order, and an
+  // archive merged across locations does not arrive chronologically.
+  const scored = [...tempVerifiedRecords(archive)].sort((a, b) => a.valid - b.valid);
+  if (scored.length === 0) return null;
+
+  const pairs: EnsemblePair[] = scored.map((r) => ({
+    members: r.tMembers ?? [],
+    observed: r.tObserved ?? 0,
+  }));
+
+  const hersbach = hersbachDecomposition(pairs);
+
+  return {
+    samples: scored.length,
+    locations: new Set(scored.map((r) => r.loc)).size,
+    crps: meanCrps(pairs),
+    crpsCI: blockBootstrapCI(crpsSeries(pairs)),
+    reliability: hersbach.reliability,
+    potential: hersbach.potential,
+    spreadSkill: spreadSkillRatio(pairs),
+    pit: pitHistogram(pitValues(pairs)),
+    confident: scored.length >= MIN_CONFIDENT_SAMPLES,
+  };
 }
 
 export function scorecard(archive: readonly ForecastRecord[] = loadArchive()): Scorecard {
@@ -138,5 +203,6 @@ export function scorecard(archive: readonly ForecastRecord[] = loadArchive()): S
     flatness: rankHistogramFlatness(ranks),
     confident: scored.length >= MIN_CONFIDENT_SAMPLES,
     locations: new Set(scored.map((r) => r.loc)).size,
+    temp: tempScorecard(archive),
   };
 }
