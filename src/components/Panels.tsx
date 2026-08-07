@@ -3,28 +3,96 @@ import { Card, Scale } from "./Card";
 import { decodeWMO } from "../lib/wmo";
 import { aqiBand, uvLabel, fmtHour, fmtClock, tempColor, DAYS } from "../lib/units";
 import type { LucideIcon } from "lucide-react";
-import type { CurrentConditions, DayPoint, HourPoint } from "../lib/types";
+import type { CurrentConditions, DayPoint, HourPoint, TempQuantiles } from "../lib/types";
 
 type Convert = (f: number) => number;
 
-export function HourlyStrip({ hourly, T }: { hourly: readonly HourPoint[]; T: Convert }) {
+/**
+ * Temperature uncertainty ribbon: the ensemble's 10th–90th percentile band with the
+ * median traced through it, drawn beneath the hourly strip and column-aligned to it.
+ * Only rendered for a live ensemble — a synthetic spread is never shown as real.
+ */
+function TemperatureBand({ spread, T }: { spread: readonly TempQuantiles[]; T: Convert }) {
+  const pts = spread.slice(0, 24);
+  const n = pts.length;
+  if (n < 2) return null;
+
+  const H = 40;
+  const lo = Math.min(...pts.map((p) => p.p10));
+  const hi = Math.max(...pts.map((p) => p.p90));
+  const span = Math.max(1, hi - lo);
+  const X = (i: number): number => i + 0.5;
+  const Y = (v: number): number => H - 3 - ((v - lo) / span) * (H - 6);
+
+  const top = pts.map((p, i) => `${X(i)},${Y(p.p90)}`);
+  const bottom = pts.map((p, i) => `${X(i)},${Y(p.p10)}`).reverse();
+  const area = `M${top.join(" L")} L${bottom.join(" L")} Z`;
+  const median = pts.map((p, i) => `${X(i)},${Y(p.p50)}`).join(" ");
+
+  // Widest hour, for an honest one-line summary of how much the models disagree.
+  let wi = 0;
+  for (let i = 1; i < n; i++) {
+    if (pts[i]!.p90 - pts[i]!.p10 > pts[wi]!.p90 - pts[wi]!.p10) wi = i;
+  }
+  const widest = Math.round(T(pts[wi]!.p90) - T(pts[wi]!.p10));
+
+  return (
+    <div style={{ minWidth: 700 }}>
+      <svg
+        viewBox={`0 0 ${n} ${H}`}
+        preserveAspectRatio="none"
+        className="w-full"
+        style={{ height: 40, display: "block" }}
+        role="img"
+        aria-label={`Ensemble temperature range, up to ${widest} degrees between members at the widest hour`}
+      >
+        <path d={area} fill="rgba(124,224,255,0.16)" />
+        <polyline
+          points={median}
+          fill="none"
+          stroke="rgba(255,255,255,0.62)"
+          strokeWidth={1.4}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 4, lineHeight: 1.35 }}>
+        Shaded band spans the ensemble's 10th–90th percentile; the line is the median.
+        Models disagree by up to {widest}° at the widest hour.
+      </p>
+    </div>
+  );
+}
+
+export function HourlyStrip({
+  hourly,
+  T,
+  spread,
+}: {
+  hourly: readonly HourPoint[];
+  T: Convert;
+  spread?: readonly TempQuantiles[];
+}) {
   return (
     <Card className="mb-4 fadein">
       <div className="hscroll overflow-x-auto -mx-1 px-1">
-        <ul className="flex" style={{ minWidth: 700 }}>
-          {hourly.slice(0, 24).map((h, i) => {
-            const c = decodeWMO(h.code, h.isDay);
-            return (
-              <li key={h.time.toISOString()} className="flex flex-col items-center gap-2 flex-1" style={{ minWidth: 46 }}>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
-                  {i === 0 ? "Now" : fmtHour(h.time)}
-                </span>
-                <c.Icon size={19} strokeWidth={1.7} />
-                <span style={{ fontSize: 15, fontWeight: 500 }}>{T(h.temp)}°</span>
-              </li>
-            );
-          })}
-        </ul>
+        <div style={{ minWidth: 700 }}>
+          <ul className="flex">
+            {hourly.slice(0, 24).map((h, i) => {
+              const c = decodeWMO(h.code, h.isDay);
+              return (
+                <li key={h.time.toISOString()} className="flex flex-col items-center gap-2 flex-1" style={{ minWidth: 46 }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
+                    {i === 0 ? "Now" : fmtHour(h.time)}
+                  </span>
+                  <c.Icon size={19} strokeWidth={1.7} />
+                  <span style={{ fontSize: 15, fontWeight: 500 }}>{T(h.temp)}°</span>
+                </li>
+              );
+            })}
+          </ul>
+          {spread && spread.length > 1 && <TemperatureBand spread={spread} T={T} />}
+        </div>
       </div>
     </Card>
   );

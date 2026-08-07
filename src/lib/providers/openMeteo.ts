@@ -104,15 +104,34 @@ export async function fetchAqi(
   return j.current?.us_aqi ?? null;
 }
 
-/** Returns member-major hourly precipitation series in inches. */
+export interface EnsembleMembers {
+  /** Member-major hourly precipitation series, inches. */
+  precip: number[][];
+  /** Member-major hourly temperature series, °F. Empty if the model omits temperature. */
+  temp: number[][];
+}
+
+/** Slice each member matching `prefix` to the 24h window at `start`, dropping short rows. */
+function memberSeries(
+  hourly: Record<string, unknown>,
+  prefix: string,
+  start: number
+): number[][] {
+  return Object.keys(hourly)
+    .filter((k) => k.startsWith(prefix))
+    .map((k) => (hourly[k] as (number | null)[]).slice(start, start + 24).map((v) => v ?? 0))
+    .filter((m) => m.length === 24);
+}
+
+/** Returns member-major hourly precipitation and temperature series. */
 export async function fetchEnsemble(
   lat: number,
   lon: number,
   signal?: AbortSignal
-): Promise<number[][]> {
+): Promise<EnsembleMembers> {
   const url =
-    `${ENSEMBLE}?latitude=${lat}&longitude=${lon}&hourly=precipitation` +
-    `&models=gfs025&forecast_days=2&precipitation_unit=inch&timezone=auto`;
+    `${ENSEMBLE}?latitude=${lat}&longitude=${lon}&hourly=precipitation,temperature_2m` +
+    `&models=gfs025&forecast_days=2&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`;
 
   const j = await fetchJson<{ hourly: Record<string, unknown> }>(url, {
     signal,
@@ -124,13 +143,10 @@ export async function fetchEnsemble(
   if (!times) throw new Error("ensemble: no time axis");
   const start = nowIndex(times);
 
-  const members = Object.keys(j.hourly)
-    .filter((k) => k.startsWith("precipitation"))
-    .map((k) => (j.hourly[k] as (number | null)[]).slice(start, start + 24).map((v) => v ?? 0))
-    .filter((m) => m.length === 24);
+  const precip = memberSeries(j.hourly, "precipitation", start);
+  if (precip.length < 3) throw new Error("ensemble: too few members");
 
-  if (members.length < 3) throw new Error("ensemble: too few members");
-  return members;
+  return { precip, temp: memberSeries(j.hourly, "temperature_2m", start) };
 }
 
 interface GeoResponse {

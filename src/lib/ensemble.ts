@@ -1,4 +1,4 @@
-import type { EnsembleSummary, HourQuantiles } from "./types";
+import type { EnsembleSummary, HourQuantiles, TempQuantiles } from "./types";
 
 /** Measurable precipitation in an hour, inches. Below this a member counts as dry. */
 export const MEASURABLE_HOURLY = 0.004;
@@ -58,6 +58,28 @@ export function ensembleStats(
     peak: Math.max(0.02, ...perHour.map((p) => p.p90)),
     wettest,
   };
+}
+
+/**
+ * Collapse per-member hourly temperature series into per-hour p10/p50/p90.
+ *
+ * Temperature has no "measurable" threshold or accumulation, so this is purely the
+ * spread that makes forecast uncertainty legible on the hourly strip. `members` is
+ * member-major: members[m][h] is the temperature in hour h for member m.
+ */
+export function temperatureStats(
+  members: readonly (readonly number[])[]
+): TempQuantiles[] {
+  const n = members.length;
+  const hours = members[0]?.length ?? 0;
+  if (n === 0 || hours === 0) return [];
+
+  const out: TempQuantiles[] = [];
+  for (let h = 0; h < hours; h++) {
+    const col = members.map((m) => m[h] ?? 0).sort((a, b) => a - b);
+    out.push({ p10: quantile(col, 0.1), p50: quantile(col, 0.5), p90: quantile(col, 0.9) });
+  }
+  return out;
 }
 
 /**

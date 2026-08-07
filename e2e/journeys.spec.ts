@@ -45,6 +45,8 @@ async function stubProviders(page: Page): Promise<void> {
     for (let m = 0; m < 12; m++) {
       hourly[`precipitation_member${String(m).padStart(2, "0")}`] =
         forecastFixture.hourly.time.map((_, i) => ((i + m) % 5 === 0 ? 0.05 : 0));
+      hourly[`temperature_2m_member${String(m).padStart(2, "0")}`] =
+        forecastFixture.hourly.time.map((_, i) => 60 + (i % 12) + (m - 6) * 0.8);
     }
     return r.fulfill({ json: { hourly } });
   });

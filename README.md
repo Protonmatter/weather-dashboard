@@ -8,7 +8,9 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 ## What it does
 
 - **Current conditions** — temperature, feels-like, daily high/low, condition summary
-- **24-hour strip** — hourly temperature and conditions
+- **24-hour strip** — hourly temperature and conditions, with an ensemble temperature band
+  (p10–p90 with the median line) drawn beneath it. Shown only when a live ensemble is
+  available — a synthetic fallback never fabricates the band.
 - **10-day forecast** — gradient min/max range bars scaled to the week, with a "now" marker on today
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h

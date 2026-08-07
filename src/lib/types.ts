@@ -51,6 +51,13 @@ export interface HourQuantiles {
   exceed: number;
 }
 
+/** Per-hour temperature quantiles across ensemble members, in the source unit (°F). */
+export interface TempQuantiles {
+  p10: number;
+  p50: number;
+  p90: number;
+}
+
 export interface EnsembleSummary {
   n: number;
   perHour: HourQuantiles[];
@@ -67,6 +74,11 @@ export interface EnsembleSummary {
   live: boolean;
   /** Raw member-major series, retained only for verification archiving. */
   memberSeries?: number[][];
+  /**
+   * Per-hour temperature spread across ensemble members, aligned to the 24h hourly axis.
+   * Present ONLY on the live path — a synthetic ensemble never fabricates a temperature band.
+   */
+  tempSpread?: TempQuantiles[];
 }
 
 export interface WeatherBundle {

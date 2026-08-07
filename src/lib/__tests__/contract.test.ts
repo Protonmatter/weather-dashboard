@@ -47,14 +47,17 @@ d("contract: Open-Meteo forecast", () => {
 });
 
 d("contract: Open-Meteo ensemble", () => {
-  it("still exposes multiple precipitation member series", async () => {
+  it("still exposes multiple precipitation and temperature member series", async () => {
     const j = await getJson(
       `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${LAT}&longitude=${LON}` +
-        `&hourly=precipitation&models=gfs025&forecast_days=1&precipitation_unit=inch&timezone=auto`
+        `&hourly=precipitation,temperature_2m&models=gfs025&forecast_days=1` +
+        `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`
     );
     const hourly = j["hourly"] as Record<string, unknown>;
-    const members = Object.keys(hourly).filter((k) => k.startsWith("precipitation"));
-    expect(members.length).toBeGreaterThanOrEqual(10);
+    const precip = Object.keys(hourly).filter((k) => k.startsWith("precipitation"));
+    const temp = Object.keys(hourly).filter((k) => k.startsWith("temperature_2m"));
+    expect(precip.length).toBeGreaterThanOrEqual(10);
+    expect(temp.length).toBeGreaterThanOrEqual(10);
     expect(Array.isArray(hourly["time"])).toBe(true);
   }, 40_000);
 });

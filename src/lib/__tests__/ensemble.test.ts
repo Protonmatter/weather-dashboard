@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { quantile, ensembleStats, synthMembers, MEASURABLE_24H } from "../ensemble";
+import { quantile, ensembleStats, temperatureStats, synthMembers, MEASURABLE_24H } from "../ensemble";
 
 describe("quantile", () => {
   it("returns 0 for an empty series", () => {
@@ -97,6 +97,66 @@ describe("ensembleStats", () => {
     const members = [[0.1, 0.2, 0.3], [0.1, 0.2], [0.4]];
     expect(() => ensembleStats(members)).not.toThrow();
     expect(ensembleStats(members).n).toBe(3);
+  });
+});
+
+describe("temperatureStats", () => {
+  it("returns an empty array for no members", () => {
+    expect(temperatureStats([])).toEqual([]);
+  });
+
+  it("returns an empty array when members carry no hours", () => {
+    expect(temperatureStats([[], []])).toEqual([]);
+  });
+
+  it("produces one quantile triple per hour", () => {
+    // 3 members over 2 hours.
+    const members = [
+      [50, 60],
+      [52, 64],
+      [54, 68],
+    ];
+    const s = temperatureStats(members);
+    expect(s).toHaveLength(2);
+    expect(s[0]).toEqual({ p10: expect.any(Number), p50: 52, p90: expect.any(Number) });
+    expect(s[1]!.p50).toBe(64);
+  });
+
+  it("keeps p10 <= p50 <= p90 at every hour", () => {
+    const members = [
+      [30, 71, 12],
+      [45, 68, 19],
+      [39, 70, 5],
+      [50, 66, 22],
+      [33, 72, 14],
+    ];
+    for (const q of temperatureStats(members)) {
+      expect(q.p10).toBeLessThanOrEqual(q.p50);
+      expect(q.p50).toBeLessThanOrEqual(q.p90);
+    }
+  });
+
+  it("collapses to a flat band when all members agree", () => {
+    const members = [
+      [60, 61],
+      [60, 61],
+      [60, 61],
+    ];
+    expect(temperatureStats(members)).toEqual([
+      { p10: 60, p50: 60, p90: 60 },
+      { p10: 61, p50: 61, p90: 61 },
+    ]);
+  });
+
+  it("handles negative (sub-zero) temperatures", () => {
+    const members = [
+      [-10, -2],
+      [-6, 0],
+      [-8, -1],
+    ];
+    const s = temperatureStats(members);
+    expect(s[0]!.p50).toBe(-8);
+    expect(s[0]!.p10).toBeLessThan(s[0]!.p90);
   });
 });
 

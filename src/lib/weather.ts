@@ -1,5 +1,5 @@
 import { fetchForecast, fetchAqi, fetchEnsemble } from "./providers/openMeteo";
-import { ensembleStats, synthMembers } from "./ensemble";
+import { ensembleStats, temperatureStats, synthMembers } from "./ensemble";
 import { isAbort } from "./http";
 import type { Place, WeatherBundle, EnsembleSummary, HourPoint } from "./types";
 
@@ -14,8 +14,15 @@ export async function ensembleFor(
   signal?: AbortSignal
 ): Promise<EnsembleSummary> {
   try {
-    const members = await fetchEnsemble(lat, lon, signal);
-    return { ...ensembleStats(members), source: "GFS ensemble", live: true, memberSeries: members };
+    const { precip, temp } = await fetchEnsemble(lat, lon, signal);
+    const tempSpread = temperatureStats(temp);
+    return {
+      ...ensembleStats(precip),
+      source: "GFS ensemble",
+      live: true,
+      memberSeries: precip,
+      ...(tempSpread.length ? { tempSpread } : {}),
+    };
   } catch (err) {
     if (isAbort(err)) throw err;
     return {

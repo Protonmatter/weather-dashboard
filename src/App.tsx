@@ -162,7 +162,7 @@ export default function App() {
         )}
 
         <Hero place={place} current={current} today={today} hourly={hourly} T={T} />
-        <HourlyStrip hourly={hourly} T={T} />
+        <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} />
 
         <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.main }}>
           <TenDayForecast daily={daily} current={current} T={T} />
