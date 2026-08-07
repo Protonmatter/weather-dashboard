@@ -3,8 +3,8 @@ import { fetchJson, isAbort, __resetHttpState } from "../http";
 import { parseQuery } from "../query";
 import { mergePlaces } from "../search";
 import { ensembleStats } from "../ensemble";
-import { murphyDecomposition } from "../verification/metrics";
-import { dieboldMariano } from "../verification/advanced";
+import { murphyDecomposition, crps, type EnsemblePair } from "../verification/metrics";
+import { dieboldMariano, hersbachDecomposition } from "../verification/advanced";
 import type { Place } from "../types";
 
 /**
@@ -52,6 +52,24 @@ describe("regression: Murphy decomposition did not sum to the Brier score", () =
     ];
     const d = murphyDecomposition(pairs);
     expect(d.reliability - d.resolution + d.uncertainty + d.residual).toBeCloseTo(d.brier, 12);
+  });
+});
+
+describe("regression: Hersbach reliability was computed against the inverted frequency", () => {
+  it("sums to the CRPS it decomposes instead of quadrupling it", () => {
+    // The interior-interval loop compared the ABOVE-frequency to the below-probability
+    // i/n, charging a calibrated ensemble (1 − 2p)² per interval. Surfaced when the
+    // temperature panel showed reliability 3.28 against a CRPS of 0.77. The sum identity
+    // against the independent estimator in metrics.ts is the guard the original
+    // (tautological) total-equals-reliability-plus-potential test failed to be.
+    const pairs: EnsemblePair[] = Array.from({ length: 25 }, (_, i) => ({
+      members: [60, 61.4, 62.1, 63.9, 64.2, 66],
+      observed: 59.5 + (i % 8),
+    }));
+    const d = hersbachDecomposition(pairs);
+    const mean = pairs.reduce((s, p) => s + crps(p.members, p.observed, false), 0) / pairs.length;
+    expect(d.total).toBeCloseTo(mean, 10);
+    expect(d.reliability).toBeLessThanOrEqual(d.total);
   });
 });
 

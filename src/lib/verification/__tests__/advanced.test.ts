@@ -69,14 +69,53 @@ describe("hersbachDecomposition", () => {
     expect(hersbachDecomposition([]).samples).toBe(0);
   });
 
-  it("satisfies total = reliability + potential", () => {
+  it("decomposes the mean CRPS it claims to — total matches an independent computation", () => {
+    // The identity worth asserting is CRPS = Reli + CRPS_pot against the estimator in
+    // metrics.ts, not total = reliability + potential, which the return value satisfies
+    // by construction whatever the components are.
     const draws = gaussians(900, 11);
     const pairs: EnsemblePair[] = [];
     for (let i = 0; i + 11 <= draws.length; i += 11) {
       pairs.push({ members: draws.slice(i, i + 10), observed: draws[i + 10]! });
     }
     const d = hersbachDecomposition(pairs);
-    expect(d.reliability + d.potential).toBeCloseTo(d.total, 10);
+    const mean = pairs.reduce((s, p) => s + crps(p.members, p.observed, false), 0) / pairs.length;
+    expect(d.total).toBeCloseTo(mean, 8);
+  });
+
+  it("charges a calibrated ensemble less reliability than potential", () => {
+    // Members and observation drawn from the same distribution: what remains should be
+    // overwhelmingly the irreducible part. The inverted-frequency defect made this fail
+    // by charging (1 − 2p)² per interior interval to a perfectly calibrated forecast.
+    const draws = gaussians(900, 11);
+    const pairs: EnsemblePair[] = [];
+    for (let i = 0; i + 11 <= draws.length; i += 11) {
+      pairs.push({ members: draws.slice(i, i + 10), observed: draws[i + 10]! });
+    }
+    const d = hersbachDecomposition(pairs);
+    expect(d.reliability).toBeLessThan(d.potential);
+  });
+
+  it("splits a worked single-pair example exactly", () => {
+    // Members [0, 1], observed 0.25. One interior interval, width 1, below-frequency
+    // ō = 0.75 against nominal p = 1/2:
+    //   reliability = 1 · (0.75 − 0.5)² = 0.0625
+    //   potential   = 1 · 0.75 · 0.25  = 0.1875
+    //   total = 0.25 = unfair CRPS: E|X−y| − ¼Σ|xᵢ−xⱼ| = 0.5 − 0.25.
+    const d = hersbachDecomposition([{ members: [0, 1], observed: 0.25 }]);
+    expect(d.reliability).toBeCloseTo(0.0625, 10);
+    expect(d.potential).toBeCloseTo(0.1875, 10);
+    expect(d.total).toBeCloseTo(crps([0, 1], 0.25, false), 10);
+  });
+
+  it("charges an outlier observation entirely to reliability", () => {
+    // Members [0, 1], observed 2 — outside the ensemble every time. Interior interval:
+    // ō = 0 vs p = 1/2 → 0.25. Outlier band: frequency 1, mean excess 1 → 1 · 1² = 1.
+    // Total 1.25 = unfair CRPS; potential 0 — no recalibration helps a miss like this.
+    const d = hersbachDecomposition([{ members: [0, 1], observed: 2 }]);
+    expect(d.reliability).toBeCloseTo(1.25, 10);
+    expect(d.potential).toBeCloseTo(0, 10);
+    expect(d.total).toBeCloseTo(crps([0, 1], 2, false), 10);
   });
 
   it("keeps both components non-negative", () => {

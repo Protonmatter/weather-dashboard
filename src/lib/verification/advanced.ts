@@ -95,6 +95,8 @@ export function hersbachDecomposition(pairs: readonly EnsemblePair[]): HersbachD
   const n = usable[0]!.members.length;
   const alpha = new Array<number>(n + 1).fill(0);
   const beta = new Array<number>(n + 1).fill(0);
+  let outliersBelow = 0;
+  let outliersAbove = 0;
 
   for (const { members, observed } of usable) {
     if (members.length !== n) continue;
@@ -113,25 +115,48 @@ export function hersbachDecomposition(pairs: readonly EnsemblePair[]): HersbachD
       }
     }
     // Outlier intervals: below the lowest member and above the highest.
-    if (observed < x[0]!) beta[0]! += x[0]! - observed;
-    if (observed > x[n - 1]!) alpha[n]! += observed - x[n - 1]!;
+    if (observed < x[0]!) {
+      beta[0]! += x[0]! - observed;
+      outliersBelow++;
+    }
+    if (observed > x[n - 1]!) {
+      alpha[n]! += observed - x[n - 1]!;
+      outliersAbove++;
+    }
   }
 
   let reliability = 0;
   let potential = 0;
 
-  for (let i = 0; i <= n; i++) {
-    const a = alpha[i]! / N;
-    const b = beta[i]! / N;
-    const width = a + b;
+  // Interior intervals. The nominal probability p_i = i/n is the forecast CDF within the
+  // interval — a BELOW-probability — so it must be compared against the realised frequency
+  // of the outcome falling below, β̄/ḡ. Comparing against the above-frequency inverts the
+  // calibration curve and charges a perfectly calibrated ensemble (1−2p)² per interval.
+  for (let i = 1; i < n; i++) {
+    const width = (alpha[i]! + beta[i]!) / N; // α+β always spans the full interval
     if (width === 0) continue;
 
-    // Realised frequency of the outcome falling above interval i.
-    const oBar = a / width;
+    const oBar = beta[i]! / N / width;
     const pNominal = i / n;
 
     reliability += width * (oBar - pNominal) ** 2;
     potential += width * oBar * (1 - oBar);
+  }
+
+  // Outlier intervals (Hersbach 2000 §4b): no member bounds them, so the width is the
+  // average excess conditioned on the outlier actually occurring, weighted by how often
+  // it does. Nominal probabilities are exact — 0 below the ensemble, 1 above it.
+  if (outliersBelow > 0) {
+    const o = outliersBelow / N;
+    const g = beta[0]! / outliersBelow;
+    reliability += g * o * o;
+    potential += g * o * (1 - o);
+  }
+  if (outliersAbove > 0) {
+    const o = outliersAbove / N; // frequency of the outcome above every member
+    const g = alpha[n]! / outliersAbove;
+    reliability += g * o * o;
+    potential += g * o * (1 - o);
   }
 
   return { reliability, potential, total: reliability + potential, samples: N };
