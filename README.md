@@ -24,6 +24,7 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 Design decisions live in `docs/`, written before implementation:
 
 - [RFC 0001 — Verification Depth, Delivery Pipeline, and Presentation Targets](docs/rfcs/0001-verification-and-delivery.md)
+- [RFC 0002 — Temperature Verification Track](docs/rfcs/0002-temperature-verification.md)
 - [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
 
 ## Pipeline
@@ -48,9 +49,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 130 tests
+npm test            # unit, validation, regression — 171 tests
 npm run contract    # live provider schemas — 5 tests, network required
-npm run e2e         # functional journeys — 12 per browser project
+npm run e2e         # functional journeys — 14 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -122,6 +123,14 @@ Three deliberate choices worth calling out:
 Scores below 100 samples are labelled provisional in the UI. Synthetic members are never
 scored — only real ensemble forecasts enter the archive.
 
+**The temperature ensemble is scored too** ([RFC 0002](docs/rfcs/0002-temperature-verification.md)).
+The same archive seals per-hour temperature members (°F, rounded to 0.1) alongside
+precipitation, reconciled from the same observation fetch. The panel's temperature track
+reports the fair CRPS in °F with a moving-block bootstrap interval, the Hersbach
+reliability/potential split, the Fortin-corrected spread–skill ratio, and a PIT histogram.
+A temperature band on the hourly strip that was never checked against outcomes would be
+decoration; this is the check.
+
 **Limitations, stated plainly.** Verification uses Open-Meteo's best-estimate analysis
 rather than station observations, and the archive lives in `localStorage`, so scores
 reflect one device's usage rather than a shared record.
@@ -133,7 +142,7 @@ Every source is keyless and CORS-enabled, which is why this needs no backend.
 | Source | Used for |
 | --- | --- |
 | [Open-Meteo Forecast](https://open-meteo.com/) | Current conditions, hourly, 10-day, UV, sunrise/sunset |
-| [Open-Meteo Ensemble](https://open-meteo.com/en/docs/ensemble-api) | GFS ensemble members for the precipitation fan |
+| [Open-Meteo Ensemble](https://open-meteo.com/en/docs/ensemble-api) | GFS ensemble members for the precipitation fan, the temperature band, and temperature verification |
 | [Open-Meteo Air Quality](https://open-meteo.com/en/docs/air-quality-api) | US AQI |
 | [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) | City search, population-ranked |
 | [Zippopotam.us](https://api.zippopotam.us/) | Exact postal code lookup (~60 countries) |
@@ -186,6 +195,7 @@ src/
     weather.ts       forecast assembly; ensembleFor() is the provider seam
     verification/
       metrics.ts     Brier, Murphy decomposition, CRPS, rank histogram
+      advanced.ts    spread–skill, Hersbach split, PIT, bootstrap, Diebold–Mariano
       store.ts       localStorage forecast archive, sealed before outcomes
       verify.ts      observation reconciliation and scorecard assembly
     units.ts         conversion, colour ramp, formatting
@@ -215,9 +225,9 @@ npm run dev
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 130 tests
+npm test            # 171 tests
 npm run build
-npm run size        # gzipped JS budget, currently 63 kB against a 90 kB ceiling
+npm run size        # gzipped JS budget, currently 65 kB against a 90 kB ceiling
 ```
 
 CI runs all four on every push and pull request.
