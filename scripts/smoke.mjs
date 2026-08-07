@@ -48,11 +48,13 @@ try {
   check("index.html served", html.includes('<div id="root">'));
   check("entry script referenced", /<script[^>]+type="module"/.test(html));
 
-  const scriptMatch = html.match(/src="(\/assets\/[^"]+\.js)"/);
+  // The build uses a relative base ("./assets/…") so the artefact serves from any path
+  // depth; resolve whatever form the shell references against the server root.
+  const scriptMatch = html.match(/src="((?:\.?\/)?assets\/[^"]+\.js)"/);
   check("entry chunk resolvable", Boolean(scriptMatch));
 
   if (scriptMatch) {
-    const js = await fetch(`http://localhost:${PORT}${scriptMatch[1]}`);
+    const js = await fetch(new URL(scriptMatch[1], `http://localhost:${PORT}/`));
     const text = await js.text();
     check("entry chunk 200", js.ok, `${(text.length / 1024).toFixed(0)} kB`);
     check("chunk mounts a root", text.includes("createRoot") || text.includes("hydrateRoot"));
@@ -60,9 +62,9 @@ try {
     check("verification layer present in bundle", /reliability|Brier|brier/i.test(text));
   }
 
-  const cssMatch = html.match(/href="(\/assets\/[^"]+\.css)"/);
+  const cssMatch = html.match(/href="((?:\.?\/)?assets\/[^"]+\.css)"/);
   if (cssMatch) {
-    const css = await fetch(`http://localhost:${PORT}${cssMatch[1]}`);
+    const css = await fetch(new URL(cssMatch[1], `http://localhost:${PORT}/`));
     check("stylesheet 200", css.ok);
   }
 

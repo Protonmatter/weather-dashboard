@@ -154,13 +154,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify the deployed site responds and mounts
+        # Fetching index.html alone passes while the site renders blank — the first real
+        # deploy served a shell whose entry chunk 404'd under the Pages subpath. The probe
+        # must fetch the entry script the shell actually references.
         run: |
           URL="${{ needs.deploy.outputs.page_url || 'https://protonmatter.github.io/weather-dashboard/' }}"
           echo "probing $URL"
           for i in 1 2 3 4 5; do
-            if curl -fsS --max-time 20 "$URL" | grep -q 'id="root"'; then
-              echo "post-deploy smoke: PASS"
-              exit 0
+            HTML=$(curl -fsS --max-time 20 "$URL" || true)
+            if echo "$HTML" | grep -q 'id="root"'; then
+              SRC=$(echo "$HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
+              case "$SRC" in
+                http*) ASSET="$SRC" ;;
+                /*)    ASSET="$(echo "$URL" | sed -E 's#^(https?://[^/]+).*#\1#')$SRC" ;;
+                *)     ASSET="${URL%/}/${SRC#./}" ;;
+              esac
+              echo "entry chunk: $ASSET"
+              if curl -fsS --max-time 20 -o /dev/null "$ASSET"; then
+                echo "post-deploy smoke: PASS"
+                exit 0
+              fi
+              echo "shell served but entry chunk failed"
             fi
             echo "attempt $i failed; retrying"
             sleep 10
