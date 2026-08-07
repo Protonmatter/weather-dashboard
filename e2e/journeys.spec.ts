@@ -21,6 +21,10 @@ const forecastFixture = {
     precipitation_probability: Array.from({ length: 48 }, (_, i) => (i * 7) % 100),
     is_day: Array.from({ length: 48 }, (_, i) => (i % 24 < 12 ? 1 : 0)),
     visibility: Array.from({ length: 48 }, () => 16000),
+    // Read by the verification observation fetch, which shares this host. Without it the
+    // fetch threw on an absent array inside Promise.allSettled and reconciliation was
+    // silently unexercisable in e2e.
+    precipitation: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
   },
   daily: {
     time: Array.from({ length: 10 }, (_, i) => new Date(Date.now() + i * 86400e3).toISOString().slice(0, 10)),
@@ -162,6 +166,79 @@ test("degrades to a labelled sample forecast when providers fail", async ({ page
   await page.route("**/api.open-meteo.com/**", (r) => r.abort());
   await page.goto("/");
   await expect(page.getByText(/Sample forecast/)).toBeVisible({ timeout: 15000 });
+});
+
+test("archives each live forecast with temperature members", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  await expect
+    .poll(async () => page.evaluate(() => localStorage.getItem("wx.verification.v1") !== null), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+
+  const records = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("wx.verification.v1") ?? "[]") as Array<{
+      live: boolean;
+      members: number[];
+      tMembers?: number[];
+    }>
+  );
+  expect(records.length).toBeGreaterThan(0);
+  for (const r of records) {
+    expect(r.live).toBe(true);
+    expect(r.members).toHaveLength(12);
+    expect(r.tMembers).toHaveLength(12);
+    for (const t of r.tMembers ?? []) {
+      expect(t).toBeGreaterThan(50); // fixture band: 60 + (i % 12) + (m − 6) · 0.8
+      expect(t).toBeLessThan(80);
+    }
+  }
+});
+
+test("scores elapsed hours and surfaces the temperature verification track", async ({ page }) => {
+  // Seed sealed records for two elapsed hours; reconciliation against a stubbed
+  // observation response fills both variables and the TEMPERATURE section appears.
+  // Times are epoch-based throughout: the shared fixture's minute-precision strings
+  // parse as LOCAL time in the browser, so on any machine west of UTC its "elapsed"
+  // hours sit in the future and the seeds would never become pending.
+  const hourMs = 3600e3;
+  const top = Math.floor(Date.now() / hourMs) * hourMs;
+  const validTimes = [top - 2 * hourMs, top - hourMs];
+
+  // The observation fetch shares the forecast host but is the only call with past_days.
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.searchParams.has("past_days"),
+    (r) =>
+      r.fulfill({
+        json: {
+          hourly: {
+            time: validTimes.map((t) => new Date(t).toISOString()),
+            precipitation: [0.03, 0],
+            temperature_2m: [60.4, 61.1],
+          },
+        },
+      })
+  );
+
+  await page.addInitScript((times: number[]) => {
+    const records = times.map((valid, i) => ({
+      loc: "37.44,-122.14",
+      issued: valid - 6 * 3600e3,
+      valid,
+      p: 0.5,
+      members: Array.from({ length: 12 }, (_, m) => (m % 6 === 0 ? 0.05 : 0)),
+      live: true,
+      tMembers: Array.from({ length: 12 }, (_, m) => 58 + i + m * 0.7),
+    }));
+    localStorage.setItem("wx.verification.v1", JSON.stringify(records));
+  }, validTimes);
+
+  await page.goto("/");
+  await expect(page.getByText("TEMPERATURE", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/°F · CI/)).toBeVisible();
+  await expect(page.getByText(/Provisional —/).first()).toBeVisible();
 });
 
 test("has no critical accessibility violations in landmark structure", async ({ page }) => {
