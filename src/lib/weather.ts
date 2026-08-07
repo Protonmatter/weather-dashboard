@@ -27,7 +27,8 @@ export async function ensembleFor(
   } catch (err) {
     if (isAbort(err)) throw err;
     return {
-      ...ensembleStats(synthMembers(hourly.map((h) => h.pop))),
+      // The synthetic spread models the same 24h window a live ensemble covers.
+      ...ensembleStats(synthMembers(hourly.slice(0, 24).map((h) => h.pop))),
       source: "modeled spread",
       live: false,
     };

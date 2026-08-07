@@ -55,7 +55,8 @@ export async function fetchForecast(
   const w = await fetchJson<ForecastResponse>(url, { signal, cacheTtlMs: 120_000 });
   const start = nowIndex(w.hourly.time);
 
-  const hourly: HourPoint[] = w.hourly.time.slice(start, start + 24).map((t, i) => {
+  // Keep the full fetched axis (~240h) — consumers slice what they need (RFC 0003 §2.4).
+  const hourly: HourPoint[] = w.hourly.time.slice(start).map((t, i) => {
     const j = start + i;
     return {
       time: new Date(t),

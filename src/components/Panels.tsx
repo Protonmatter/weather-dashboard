@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Sun, Sunrise, Wind, Droplets, Eye, Gauge } from "lucide-react";
 import { Card, Scale } from "./Card";
 import { decodeWMO } from "../lib/wmo";
@@ -7,12 +8,32 @@ import type { CurrentConditions, DayPoint, HourPoint, TempQuantiles } from "../l
 
 type Convert = (f: number) => number;
 
+/** Strip a button of its chrome so it can wrap arbitrary card content (RFC 0003 §2.1). */
+const bareButton = {
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  margin: 0,
+  font: "inherit",
+  color: "inherit",
+  textAlign: "inherit",
+  cursor: "pointer",
+} as const;
+
 /**
  * Temperature uncertainty ribbon: the ensemble's 10th–90th percentile band with the
  * median traced through it, drawn beneath the hourly strip and column-aligned to it.
  * Only rendered for a live ensemble — a synthetic spread is never shown as real.
  */
-function TemperatureBand({ spread, T }: { spread: readonly TempQuantiles[]; T: Convert }) {
+function TemperatureBand({
+  spread,
+  T,
+  active,
+}: {
+  spread: readonly TempQuantiles[];
+  T: Convert;
+  active?: number | null;
+}) {
   const pts = spread.slice(0, 24);
   const n = pts.length;
   if (n < 2) return null;
@@ -36,6 +57,8 @@ function TemperatureBand({ spread, T }: { spread: readonly TempQuantiles[]; T: C
   }
   const widest = Math.round(T(pts[wi]!.p90) - T(pts[wi]!.p10));
 
+  const mark = active != null && active < n ? pts[active] : null;
+
   return (
     <div style={{ minWidth: 700 }}>
       <svg
@@ -55,6 +78,16 @@ function TemperatureBand({ spread, T }: { spread: readonly TempQuantiles[]; T: C
           vectorEffect="non-scaling-stroke"
           strokeLinejoin="round"
         />
+        {mark && active != null && (
+          <g aria-hidden="true">
+            <line
+              x1={X(active)} y1={Y(mark.p90)} x2={X(active)} y2={Y(mark.p10)}
+              stroke="#7ce0ff" strokeWidth={1.2} vectorEffect="non-scaling-stroke"
+            />
+            <circle cx={X(active)} cy={Y(mark.p50)} r={2.4} fill="#7ce0ff"
+              vectorEffect="non-scaling-stroke" />
+          </g>
+        )}
       </svg>
       <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 4, lineHeight: 1.35 }}>
         Shaded band spans the ensemble's 10th–90th percentile; the line is the median.
@@ -73,43 +106,107 @@ export function HourlyStrip({
   T: Convert;
   spread?: readonly TempQuantiles[];
 }) {
+  const hours = hourly.slice(0, 24);
+
+  // Preview follows hover/focus; a pin survives pointer leave (RFC 0003 §2.3).
+  const [preview, setPreview] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const shown = pinned ?? preview;
+
+  // An hour index is meaningless across locations.
+  useEffect(() => {
+    setPreview(null);
+    setPinned(null);
+  }, [hourly]);
+
+  const h = shown != null ? hours[shown] : undefined;
+  const q = shown != null ? spread?.[shown] : undefined;
+
   return (
     <Card className="mb-4 fadein">
       <div className="hscroll overflow-x-auto -mx-1 px-1">
         <div style={{ minWidth: 700 }}>
           <ul className="flex">
-            {hourly.slice(0, 24).map((h, i) => {
-              const c = decodeWMO(h.code, h.isDay);
+            {hours.map((hp, i) => {
+              const c = decodeWMO(hp.code, hp.isDay);
               return (
-                <li key={h.time.toISOString()} className="flex flex-col items-center gap-2 flex-1" style={{ minWidth: 46 }}>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
-                    {i === 0 ? "Now" : fmtHour(h.time)}
-                  </span>
-                  <c.Icon size={19} strokeWidth={1.7} />
-                  <span style={{ fontSize: 15, fontWeight: 500 }}>{T(h.temp)}°</span>
+                <li key={hp.time.toISOString()} className="flex-1" style={{ minWidth: 46 }}>
+                  <button
+                    type="button"
+                    className="flex flex-col items-center gap-2 w-full py-1"
+                    style={{
+                      ...bareButton,
+                      borderRadius: 10,
+                      background: shown === i ? "rgba(255,255,255,0.09)" : "transparent",
+                    }}
+                    aria-pressed={pinned === i}
+                    aria-label={`Inspect ${i === 0 ? "now" : fmtHour(hp.time)}`}
+                    onPointerEnter={() => setPreview(i)}
+                    onPointerLeave={() => setPreview(null)}
+                    onFocus={() => setPreview(i)}
+                    onClick={() => setPinned(pinned === i ? null : i)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setPinned(null);
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
+                      {i === 0 ? "Now" : fmtHour(hp.time)}
+                    </span>
+                    <c.Icon size={19} strokeWidth={1.7} />
+                    <span style={{ fontSize: 15, fontWeight: 500 }}>{T(hp.temp)}°</span>
+                  </button>
                 </li>
               );
             })}
           </ul>
-          {spread && spread.length > 1 && <TemperatureBand spread={spread} T={T} />}
+          {spread && spread.length > 1 && <TemperatureBand spread={spread} T={T} active={shown} />}
         </div>
+      </div>
+      <div aria-live="polite" style={{ minHeight: 32, marginTop: 6 }}>
+        {h ? (
+          <p style={{ fontSize: 12, lineHeight: 1.4 }}>
+            <span style={{ fontWeight: 600 }}>
+              {shown === 0 ? "Now" : fmtHour(h.time)}
+            </span>
+            <span style={{ color: "rgba(255,255,255,0.66)" }}>
+              {" "}· {decodeWMO(h.code, h.isDay).label} · {T(h.temp)}° · {Math.round(h.pop)}% precip
+            </span>
+            {q && (
+              <span style={{ display: "block", color: "#7ce0ff", fontSize: 11.5 }}>
+                Ensemble {T(q.p10)}–{T(q.p90)}°, median {T(q.p50)}°
+              </span>
+            )}
+          </p>
+        ) : (
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+            Hover, tap, or tab to an hour for its detail{spread && spread.length > 1 ? " and ensemble range" : ""}.
+          </p>
+        )}
       </div>
     </Card>
   );
 }
 
+const sameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateString();
+
 export function TenDayForecast({
   daily,
   current,
+  hourly,
   T,
 }: {
   daily: readonly DayPoint[];
   current: CurrentConditions;
+  hourly: readonly HourPoint[];
   T: Convert;
 }) {
   const weekMin = Math.min(...daily.map((d) => d.low));
   const weekMax = Math.max(...daily.map((d) => d.high));
   const span = Math.max(1, weekMax - weekMin);
+
+  // One day expands at a time; index resets when the place changes.
+  const [expanded, setExpanded] = useState<number | null>(null);
+  useEffect(() => setExpanded(null), [daily]);
 
   return (
     <Card title="10-Day Forecast" className="fadein">
@@ -121,48 +218,100 @@ export function TenDayForecast({
           const dayRange = Math.max(1, d.high - d.low);
           const nowPos =
             i === 0 ? ((Math.min(Math.max(current.temp, d.low), d.high) - d.low) / dayRange) * 100 : null;
+          const open = expanded === i;
+          const dayHours = open ? hourly.filter((hp) => sameDay(hp.time, d.date)) : [];
 
           return (
             <li
               key={d.date.toISOString()}
-              className="flex items-center gap-3 py-2"
               style={{ borderTop: i ? "1px solid rgba(255,255,255,0.10)" : "none" }}
             >
-              <span style={{ width: 46, fontSize: 14, fontWeight: 500 }}>
-                {i === 0 ? "Today" : DAYS[d.date.getDay()]}
-              </span>
-              <c.Icon size={17} strokeWidth={1.7} />
-              <span style={{ width: 30, textAlign: "right", fontSize: 14, color: "rgba(255,255,255,0.55)" }}>
-                {T(d.low)}°
-              </span>
-              <div className="flex-1 relative" style={{ height: 4 }}>
-                <div className="absolute inset-0 rounded-full" style={{ background: "rgba(255,255,255,0.16)" }} />
-                <div
-                  className="absolute rounded-full"
-                  style={{
-                    left: `${left}%`,
-                    width: `${width}%`,
-                    top: 0,
-                    height: 4,
-                    background: `linear-gradient(90deg, ${tempColor(d.low)}, ${tempColor(d.high)})`,
-                  }}
-                />
-                {nowPos !== null && (
+              <button
+                type="button"
+                className="flex items-center gap-3 py-2 w-full"
+                style={bareButton}
+                aria-expanded={open}
+                aria-controls={`day-detail-${i}`}
+                onClick={() => setExpanded(open ? null : i)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setExpanded(null);
+                }}
+              >
+                <span style={{ width: 46, fontSize: 14, fontWeight: 500 }}>
+                  {i === 0 ? "Today" : DAYS[d.date.getDay()]}
+                </span>
+                <c.Icon size={17} strokeWidth={1.7} />
+                <span style={{ width: 30, textAlign: "right", fontSize: 14, color: "rgba(255,255,255,0.55)" }}>
+                  {T(d.low)}°
+                </span>
+                <div className="flex-1 relative" style={{ height: 4 }}>
+                  <div className="absolute inset-0 rounded-full" style={{ background: "rgba(255,255,255,0.16)" }} />
                   <div
                     className="absolute rounded-full"
                     style={{
-                      left: `calc(${left}% + ${width}% * ${nowPos / 100})`,
-                      top: -2,
-                      width: 8,
-                      height: 8,
-                      marginLeft: -4,
-                      background: "#fff",
-                      boxShadow: "0 0 0 1.5px rgba(0,0,0,0.35)",
+                      left: `${left}%`,
+                      width: `${width}%`,
+                      top: 0,
+                      height: 4,
+                      background: `linear-gradient(90deg, ${tempColor(d.low)}, ${tempColor(d.high)})`,
                     }}
                   />
-                )}
-              </div>
-              <span style={{ width: 30, textAlign: "right", fontSize: 14, fontWeight: 500 }}>{T(d.high)}°</span>
+                  {nowPos !== null && (
+                    <div
+                      className="absolute rounded-full"
+                      style={{
+                        left: `calc(${left}% + ${width}% * ${nowPos / 100})`,
+                        top: -2,
+                        width: 8,
+                        height: 8,
+                        marginLeft: -4,
+                        background: "#fff",
+                        boxShadow: "0 0 0 1.5px rgba(0,0,0,0.35)",
+                      }}
+                    />
+                  )}
+                </div>
+                <span style={{ width: 30, textAlign: "right", fontSize: 14, fontWeight: 500 }}>{T(d.high)}°</span>
+              </button>
+
+              {open && (
+                <div id={`day-detail-${i}`} className="pb-2">
+                  {dayHours.length > 0 ? (
+                    <div className="hscroll overflow-x-auto -mx-1 px-1">
+                      <ul className="flex" style={{ minWidth: Math.min(700, dayHours.length * 44) }}>
+                        {dayHours.map((hp) => {
+                          const hc = decodeWMO(hp.code, hp.isDay);
+                          return (
+                            <li
+                              key={hp.time.toISOString()}
+                              className="flex flex-col items-center gap-1.5 flex-1"
+                              style={{ minWidth: 40 }}
+                            >
+                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 600 }}>
+                                {fmtHour(hp.time)}
+                              </span>
+                              <hc.Icon size={15} strokeWidth={1.7} />
+                              <span style={{ fontSize: 12.5, fontWeight: 500 }}>{T(hp.temp)}°</span>
+                              <span style={{ fontSize: 9.5, color: "rgba(124,224,255,0.85)" }}>
+                                {hp.pop > 0 ? `${Math.round(hp.pop)}%` : ""}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
+                      Hourly detail is not available this far out.
+                    </p>
+                  )}
+                  <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+                    UV {Math.round(d.uv)} ({uvLabel(d.uv)})
+                    {d.sunrise && ` · Sunrise ${fmtClock(d.sunrise)}`}
+                    {d.sunset && ` · Sunset ${fmtClock(d.sunset)}`}
+                  </p>
+                </div>
+              )}
             </li>
           );
         })}

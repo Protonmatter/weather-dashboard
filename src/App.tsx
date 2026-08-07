@@ -87,7 +87,9 @@ export default function App() {
         lat: bundle.place.lat,
         lon: bundle.place.lon,
         members: bundle.ensemble.memberSeries ?? [],
-        validTimes: bundle.hourly.map((h) => h.time),
+        // Cap to the ensemble's 24h window: a 240-hour axis against 24-hour member rows
+        // would archive phantom zero-member records for every hour past the window.
+        validTimes: bundle.hourly.slice(0, 24).map((h) => h.time),
         live: true,
         tempMembers: bundle.ensemble.tempMemberSeries,
       });
@@ -166,7 +168,7 @@ export default function App() {
         <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} />
 
         <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.main }}>
-          <TenDayForecast daily={daily} current={current} T={T} />
+          <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} />
           <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.side }}>
             <AirQualityCard aqi={aqi} wet={cond.wet} />
             <PrecipitationCard ens={ensemble} hourly={hourly} />
