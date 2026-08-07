@@ -107,24 +107,13 @@ export function PrecipitationCard({ ens, hourly }: Props) {
         label="Precipitation likelihood over 24 hours"
       />
 
-      <svg
-        ref={svgRef}
-        viewBox="0 0 240 58"
-        className="w-full mt-3"
-        style={{ display: "block", touchAction: "pan-y", cursor: "crosshair" }}
-        role="img"
+      {/* Keyboard handling lives on a div: WebKit will not reliably focus an <svg>. */}
+      <div
+        role="group"
         tabIndex={0}
-        aria-label={
-          `Ensemble precipitation spread. Median 24-hour total ${ens.t50.toFixed(2)} inches, ` +
-          `10th to 90th percentile ${ens.t10.toFixed(2)} to ${ens.t90.toFixed(2)} inches. ` +
-          `Use arrow keys to inspect hours.`
-        }
-        onPointerMove={(e) => setPreview(hourAt(e.clientX))}
-        onPointerLeave={() => setPreview(null)}
-        onClick={(e) => {
-          const i = hourAt(e.clientX);
-          setPinned(pinned != null && pinned === i ? null : i);
-        }}
+        aria-label="Precipitation fan — arrow keys inspect hours, Escape clears"
+        className="mt-3"
+        style={{ borderRadius: 8 }}
         onKeyDown={(e) => {
           if (n < 2) return;
           const cur = shown ?? 0;
@@ -145,9 +134,27 @@ export function PrecipitationCard({ ens, hourly }: Props) {
           }
         }}
       >
-        <line x1="0" y1="52" x2="240" y2="52" stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
-        <FanChart ens={ens} active={shown} />
-      </svg>
+        <svg
+          ref={svgRef}
+          viewBox="0 0 240 58"
+          className="w-full"
+          style={{ display: "block", touchAction: "pan-y", cursor: "crosshair" }}
+          role="img"
+          aria-label={
+            `Ensemble precipitation spread. Median 24-hour total ${ens.t50.toFixed(2)} inches, ` +
+            `10th to 90th percentile ${ens.t10.toFixed(2)} to ${ens.t90.toFixed(2)} inches.`
+          }
+          onPointerMove={(e) => setPreview(hourAt(e.clientX))}
+          onPointerLeave={() => setPreview(null)}
+          onClick={(e) => {
+            const i = hourAt(e.clientX);
+            setPinned(pinned != null && pinned === i ? null : i);
+          }}
+        >
+          <line x1="0" y1="52" x2="240" y2="52" stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
+          <FanChart ens={ens} active={shown} />
+        </svg>
+      </div>
 
       <div className="flex justify-between" style={{ fontSize: 9, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)" }} aria-hidden="true">
         <span>NOW</span>

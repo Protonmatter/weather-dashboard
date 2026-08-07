@@ -10,11 +10,15 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **Current conditions** — temperature, feels-like, daily high/low, condition summary
 - **24-hour strip** — hourly temperature and conditions, with an ensemble temperature band
   (p10–p90 with the median line) drawn beneath it. Shown only when a live ensemble is
-  available — a synthetic fallback never fabricates the band.
-- **10-day forecast** — gradient min/max range bars scaled to the week, with a "now" marker on today
+  available — a synthetic fallback never fabricates the band. Hover, tap, or tab to any
+  hour for its detail and exact ensemble range; click pins it.
+- **10-day forecast** — gradient min/max range bars scaled to the week, with a "now" marker
+  on today. Any day expands in place to its hourly detail, UV, and sun times — served from
+  data already fetched, never a new request.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
-  total clears 0.01″, not a deterministic PoP.
+  total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
+  any hour's rate quantiles and wet-member share.
 - **Air quality, UV index, sunset arc**, humidity / wind / visibility / pressure
 - **Backdrop reacts to conditions** — night city bokeh, rain streaks on glass when it's actually
   raining. Respects `prefers-reduced-motion`.
@@ -25,6 +29,7 @@ Design decisions live in `docs/`, written before implementation:
 
 - [RFC 0001 — Verification Depth, Delivery Pipeline, and Presentation Targets](docs/rfcs/0001-verification-and-delivery.md)
 - [RFC 0002 — Temperature Verification Track](docs/rfcs/0002-temperature-verification.md)
+- [RFC 0003 — Inspection and Drill-Down](docs/rfcs/0003-inspection-and-drill-down.md)
 - [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
 
 ## Pipeline
@@ -51,7 +56,7 @@ hiccup cannot block an unrelated contributor.
 npm run typecheck   # static
 npm test            # unit, validation, regression — 171 tests
 npm run contract    # live provider schemas — 5 tests, network required
-npm run e2e         # functional journeys — 14 per browser project
+npm run e2e         # functional journeys — 17 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget

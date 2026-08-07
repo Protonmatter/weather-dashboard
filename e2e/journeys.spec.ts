@@ -241,6 +241,46 @@ test("scores elapsed hours and surfaces the temperature verification track", asy
   await expect(page.getByText(/Provisional —/).first()).toBeVisible();
 });
 
+test("pins an hour on the strip and reads its ensemble range", async ({ page }) => {
+  await page.goto("/");
+  const cell = page.getByRole("button", { name: /^Inspect / }).nth(5);
+  await cell.click();
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+  // Fixture members are 60 + (i % 12) + (m − 6) · 0.8 — a real spread at every hour.
+  await expect(page.getByText(/Ensemble \d+–\d+°, median \d+°/)).toBeVisible();
+  await cell.press("Escape");
+  await expect(cell).toHaveAttribute("aria-pressed", "false");
+});
+
+test("expands a day into its hourly detail without a network call", async ({ page }) => {
+  await page.goto("/");
+  // Let the initial load's own fetches finish before counting: the claim under test is
+  // that EXPANSION is a pure view over data already held (RFC 0003 §4), not that the
+  // app never fetched anything. The footer's member count renders only after the last
+  // of the load-time fetches resolves — networkidle is not reliable on WebKit here.
+  await expect(page.getByText(/GFS ensemble \(\d+\)/)).toBeVisible();
+  const requests: string[] = [];
+  page.on("request", (r) => requests.push(r.url()));
+  const row = page.getByRole("button", { name: /Sat|Sun|Mon|Tue|Wed|Thu|Fri/ }).nth(1);
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(/UV \d+ \(/)).toBeVisible();
+  expect(requests.filter((u) => u.includes("open-meteo"))).toHaveLength(0); // RFC 0003 §4
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+});
+
+test("scrubs the precipitation fan into hourly-rate mode with the keyboard", async ({ page }) => {
+  await page.goto("/");
+  const fan = page.getByRole("group", { name: /arrow keys inspect hours/ });
+  await fan.focus();
+  await fan.press("ArrowRight");
+  await expect(page.getByText(/HOURLY RATE AT/)).toBeVisible();
+  await expect(page.getByText("WET", { exact: true })).toBeVisible();
+  await fan.press("Escape");
+  await expect(page.getByText("24-HOUR TOTALS")).toBeVisible();
+});
+
 test("has no critical accessibility violations in landmark structure", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
