@@ -15,7 +15,7 @@
     "e2e": "playwright test",
     "smoke": "node scripts/smoke.mjs",
     "deps": "node scripts/deps-check.mjs",
-    "contract": "RUN_CONTRACT_TESTS=1 vitest run src/lib/__tests__/contract.test.ts"
+    "contract": "node scripts/contract.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.383.0",
