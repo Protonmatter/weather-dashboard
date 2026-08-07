@@ -241,16 +241,24 @@ reconstructing the Brier score, and the rank histogram's tie handling.
 
 ## Deploying
 
-The build output is static, so any static host works and none of them need a paid tier.
+The build output is static with a relative base (`base: "./"`), so the same artefact
+serves from a domain root or any subpath, and no host needs a paid tier.
 
-**Cloudflare Pages** — connect the repo, then:
+**GitHub Pages** — deployed automatically by `.github/workflows/ci.yml` on every push to
+`main` (enable Pages in repo settings with source *GitHub Actions* once). Live at
+<https://protonmatter.github.io/weather-dashboard/>.
 
-- Build command: `npm run build`
-- Output directory: `dist`
+**Cloudflare Pages** — the same workflow carries a `deploy-cloudflare` job that skips
+itself until two repository secrets exist:
 
-**GitHub Pages** — a workflow is included at `.github/workflows/deploy.yml`. Enable Pages in
-repo settings with source set to *GitHub Actions*. If you serve from a project subpath, set
-`base: "/<repo-name>/"` in `vite.config.js`.
+```bash
+gh secret set CLOUDFLARE_API_TOKEN    # API token with Cloudflare Pages: Edit
+gh secret set CLOUDFLARE_ACCOUNT_ID   # dash.cloudflare.com → Workers & Pages → account ID
+```
+
+The job creates the Pages project on first run. (Connecting the repo in the Cloudflare
+dashboard works too — build command `npm run build`, output `dist` — but then Cloudflare
+builds outside the pipeline's gates.)
 
 **Netlify / Vercel** — auto-detected; no configuration needed.
 
@@ -261,7 +269,8 @@ repo settings with source set to *GitHub Actions*. If you serve from a project s
 
 Both are fine for personal traffic. Under real load, put a caching proxy in front — a
 Cloudflare Worker on the free tier (100k requests/day) handles this without changing the
-client, since the fetch helpers are isolated in `WeatherDashboard.jsx`.
+client, since every outbound call already goes through `lib/http.ts` and the provider
+adapters in `lib/providers/`.
 
 ## License
 
