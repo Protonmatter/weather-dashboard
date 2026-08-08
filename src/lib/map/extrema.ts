@@ -19,6 +19,8 @@ export function smoothGrid(
   const smoothed: Array<number | null> = new Array(values.length).fill(null);
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      const center = values[row * cols + col];
+      if (center == null || !Number.isFinite(center)) continue;
       let sum = 0;
       let totalWeight = 0;
       let weightIndex = 0;
@@ -87,7 +89,8 @@ export function findPressureExtrema(
   const selected: PressureExtremum[] = [];
   for (const candidate of candidates.sort((a, b) => b.prominence - a.prominence)) {
     const tooClose = selected.some(
-      (other) => Math.hypot(candidate.x - other.x, candidate.y - other.y) < minDistance
+      (other) => other.kind === candidate.kind
+        && Math.hypot(candidate.x - other.x, candidate.y - other.y) < minDistance
     );
     if (!tooClose) selected.push(candidate);
   }

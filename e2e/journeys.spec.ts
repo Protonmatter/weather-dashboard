@@ -324,6 +324,8 @@ test("map controls remain touch-sized without horizontal overflow", async ({ pag
   const attributionBox = await page.getByRole("link", { name: /OpenStreetMap contributors/ }).boundingBox();
   expect(attributionBox!.width).toBeGreaterThanOrEqual(44);
   expect(attributionBox!.height).toBeGreaterThanOrEqual(44);
+  const legendBox = await page.getByTestId("forecast-map-legend").boundingBox();
+  expect(attributionBox!.y + attributionBox!.height).toBeLessThanOrEqual(legendBox!.y);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth
   );

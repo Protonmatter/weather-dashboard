@@ -301,7 +301,10 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           </button>
         </div>
 
-        <div className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-white/90">
+        <div
+          className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-white/90"
+          data-testid="forecast-map-legend"
+        >
           <div className="h-1.5 w-full rounded-full" style={{ background: `linear-gradient(90deg, ${currentLegend.stops})` }} aria-hidden="true" />
           <div className="mt-1 flex justify-between gap-2" aria-hidden="true">
             {currentLegend.labels.map((label) => <span key={label}>{label}</span>)}
@@ -311,11 +314,12 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
 
         {tileConfig && (
           <a
-            className="absolute bottom-1 right-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-950/75 px-2 text-[9px] text-white underline"
+            className="absolute right-2 top-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-950/75 px-2 text-[9px] text-white underline"
             href={tileConfig.attributionUrl}
             target="_blank"
             rel="noreferrer"
             onPointerDown={(event) => event.stopPropagation()}
+            data-testid="forecast-map-attribution"
           >
             {tileConfig.attribution}
           </a>

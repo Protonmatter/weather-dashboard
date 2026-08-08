@@ -60,7 +60,7 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 219 tests
+npm test            # unit, validation, regression — 221 tests
 npm run contract    # live provider schemas — 6 tests, network required
 npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
@@ -250,7 +250,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 219 tests
+npm test            # 221 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -269,7 +269,8 @@ provider schema and unit drift, timeout-versus-cancellation fallback, bounded ca
 freshness, responsive height changes, lazy-chunk containment, stale request generations,
 stationary-grid revalidation, stable tile identity while panning, touch-sized error
 recovery and attribution, isolated optional-map circuit breaking, and retry recovery for
-a failed viewport.
+a failed viewport. Pressure-extrema tests preserve missing cells and keep nearby opposite
+H/L systems while still suppressing duplicate labels of the same kind.
 
 ## Deploying
 
