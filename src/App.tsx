@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Backdrop } from "./components/Backdrop";
 import { SearchBar } from "./components/SearchBar";
 import { Hero } from "./components/Hero";
@@ -12,6 +12,7 @@ import {
   DetailsGrid,
 } from "./components/Panels";
 import { VerificationPanel } from "./components/VerificationPanel";
+import { Card } from "./components/Card";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
 import { useViewport } from "./hooks/useViewport";
 import { recordForecast } from "./lib/verification/store";
@@ -24,6 +25,8 @@ import { f2c, fmtClock } from "./lib/units";
 import { isAbort } from "./lib/http";
 import type { Place, WeatherBundle } from "./lib/types";
 
+const ForecastMap = lazy(() => import("./components/ForecastMap"));
+
 const FONT =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif';
 
@@ -35,6 +38,55 @@ const DEFAULT_PLACE: Place = {
   country: "United States",
   cc: "us",
 };
+
+function DeferredForecastMap({
+  place,
+  target,
+  unit,
+  enabled,
+}: {
+  place: Place;
+  target: "phone" | "tablet" | "cinema";
+  unit: "F" | "C";
+  enabled: boolean;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const element = host.current;
+    if (!element || visible) return;
+    if (!("IntersectionObserver" in window)) {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "400px" }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  return (
+    <div ref={host}>
+      {visible ? (
+        <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
+          <ForecastMap place={place} target={target} unit={unit} enabled={enabled} />
+        </Suspense>
+      ) : (
+        <Card title="48-hour forecast map" className="mt-4 min-h-72">
+          <span className="text-xs text-white/60">Map loads as it approaches the viewport.</span>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [unit, setUnit] = useState<"F" | "C">("F");
@@ -166,6 +218,7 @@ export default function App() {
 
         <Hero place={place} current={current} today={today} hourly={hourly} T={T} />
         <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} />
+        <DeferredForecastMap place={place} target={target} unit={unit} enabled={data.live} />
 
         <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.main }}>
           <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} />
