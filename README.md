@@ -15,6 +15,11 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **10-day forecast** — gradient min/max range bars scaled to the week, with a "now" marker
   on today. Any day expands in place to its hourly detail, UV, and sun times — served from
   data already fetched, never a new request.
+- **48-hour forecast map** — a keyless, client-side GFS view with mean-sea-level-pressure
+  isobars and H/L centres, temperature and hour-ending precipitation layers, wind-flow
+  arrows, and a UTC time scrubber. Viewport grids are bounded to 63–117 samples and load
+  only when the map approaches the screen; an active stationary grid revalidates when its
+  10-minute in-memory cache window expires.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
   total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
@@ -30,11 +35,12 @@ Design decisions live in `docs/`, written before implementation:
 - [RFC 0001 — Verification Depth, Delivery Pipeline, and Presentation Targets](docs/rfcs/0001-verification-and-delivery.md)
 - [RFC 0002 — Temperature Verification Track](docs/rfcs/0002-temperature-verification.md)
 - [RFC 0003 — Inspection and Drill-Down](docs/rfcs/0003-inspection-and-drill-down.md)
+- [RFC 0004 — Interactive Forecast Map](docs/rfcs/0004-interactive-forecast-map.md)
 - [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
 
 ## Pipeline
 
-Eight jobs, each answering one question, so a red build says *what kind* of thing broke
+Each job answers one question, so a red build says *what kind* of thing broke
 before you open the log.
 
 | Job | Question | When |
@@ -45,8 +51,8 @@ before you open the log.
 | Build + budget + smoke | Does it build, fit the budget, and boot? | every push |
 | Functional (E2E) | Do real journeys work in Chromium, WebKit, iPhone, Pixel? | every push |
 | Contract | Do live provider schemas still match our parsers? | main + nightly |
-| Deploy | — | main only |
-| Post-deploy smoke | Did the deployed site actually mount? | after deploy |
+| Deploy | Does each host receive the exact tested artefact? | main only |
+| Post-deploy smoke | Did each configured host actually mount its entry chunk? | after deploy |
 
 Contract and dependency jobs run nightly because provider schemas and CVE disclosures
 happen on someone else's schedule. Contract tests are excluded from PR runs so an upstream
@@ -54,9 +60,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 171 tests
-npm run contract    # live provider schemas — 5 tests, network required
-npm run e2e         # functional journeys — 17 per browser project
+npm test            # unit, validation, regression — 223 tests
+npm run contract    # live provider schemas — 6 tests, network required
+npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -147,15 +153,22 @@ Every source is keyless and CORS-enabled, which is why this needs no backend.
 | Source | Used for |
 | --- | --- |
 | [Open-Meteo Forecast](https://open-meteo.com/) | Current conditions, hourly, 10-day, UV, sunrise/sunset |
+| [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) | Bounded 48-hour map grids: temperature, mean-sea-level pressure, precipitation, and wind |
 | [Open-Meteo Ensemble](https://open-meteo.com/en/docs/ensemble-api) | GFS ensemble members for the precipitation fan, the temperature band, and temperature verification |
 | [Open-Meteo Air Quality](https://open-meteo.com/en/docs/air-quality-api) | US AQI |
 | [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) | City search, population-ranked |
 | [Zippopotam.us](https://api.zippopotam.us/) | Exact postal code lookup (~60 countries) |
 | [Photon](https://photon.komoot.io/) (Komoot / OSM) | Postcodes, addresses, villages, landmarks |
 | [BigDataCloud](https://www.bigdatacloud.com/) | Reverse geocoding for "use my location" |
+| [OpenStreetMap standard tiles](https://operations.osmfoundation.org/policies/tiles/) | Interactive map base layer; visible tiles only, no prefetch or proxy |
 
 Photon and Zippopotam are OpenStreetMap-derived. **ODbL attribution is required** if you
 deploy this publicly — see [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright).
+The map also renders visible attribution directly over its tile layer.
+
+Opening the map sends its bounded coordinate grid to Open-Meteo and requests the visible
+tile range from the configured tile provider. Map grids are held only in a four-entry
+memory cache and are never written to the verification archive or `localStorage`.
 
 ## Search
 
@@ -197,6 +210,7 @@ src/
     query.ts         query shape classification (city / postal / coords)
     search.ts        provider fan-out, merge, de-duplication, ranking
     ensemble.ts      quantiles and ensemble summarisation
+    map/             Web Mercator, grids, contours, H/L detection, rendering state
     weather.ts       forecast assembly; ensembleFor() is the provider seam
     verification/
       metrics.ts     Brier, Murphy decomposition, CRPS, rank histogram
@@ -206,7 +220,7 @@ src/
     units.ts         conversion, colour ramp, formatting
     wmo.ts           WMO 4677 code decoding
     providers/       one adapter per external service, typed at the boundary
-  hooks/useSearch.ts abort-on-supersede + sequence guarding
+  hooks/             search and forecast-map request lifecycles
   components/        presentational only
 ```
 
@@ -226,13 +240,19 @@ npm install
 npm run dev
 ```
 
+Optional map provider settings are documented in `.env.example`. The default calls
+Open-Meteo directly and uses OpenStreetMap standard raster tiles. A configured
+`VITE_MAP_FORECAST_BASE_URL` must expose an Open-Meteo-compatible `/v1/gfs` path; transient
+proxy failure falls back to the direct provider. Tile and weather endpoint values are
+build-time configuration, never search-box input.
+
 ## Verification
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 171 tests
+npm test            # 223 tests
 npm run build
-npm run size        # gzipped JS budget, currently 65 kB against a 90 kB ceiling
+npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
 
 CI runs all four on every push and pull request.
@@ -243,6 +263,16 @@ ambiguous 5-digit case, abort and retry policy, circuit-breaker behaviour, and t
 de-duplication merge, and every verification metric against hand-computed analytic
 values — CRPS reducing to absolute error for a single member, the decomposition identity
 reconstructing the Brier score, and the rank histogram's tie handling.
+The map suite additionally covers projection round-trips and the antimeridian, adaptive
+grid bounds, missing-data interpolation, marching-squares saddles, H/L suppression,
+provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
+freshness, responsive height changes, lazy-chunk containment, stale request generations,
+stationary-grid revalidation, stable tile identity while panning, polar viewport bounds,
+touch-sized error recovery and attribution, isolated optional-map circuit breaking, and
+retry recovery for a failed viewport. Wheel-input coverage verifies coalesced zoom while
+preventing document scroll, and responsive tests preserve pan and forecast-time state.
+Pressure-extrema tests preserve missing cells and keep nearby opposite H/L systems while
+still suppressing duplicate labels of the same kind.
 
 ## Deploying
 
@@ -261,9 +291,14 @@ gh secret set CLOUDFLARE_API_TOKEN    # API token with Cloudflare Pages: Edit
 gh secret set CLOUDFLARE_ACCOUNT_ID   # dash.cloudflare.com → Workers & Pages → account ID
 ```
 
-The job creates the Pages project on first run. (Connecting the repo in the Cloudflare
-dashboard works too — build command `npm run build`, output `dist` — but then Cloudflare
-builds outside the pipeline's gates.)
+The job creates the Pages project on first run, deploys the exact `dist` artefact already
+built, budgeted, smoke-tested, and exercised by E2E, then independently fetches the
+Cloudflare entry chunk. The Linux-only deployment step pins an exact Wrangler version;
+Wrangler is deliberately not a dev dependency because its `workerd` binary does not support
+Windows ARM64. Connecting the repo in the Cloudflare dashboard is intentionally avoided
+because that would build outside these gates. The isolated project name is
+`protonmatter-weather-dashboard`, yielding
+<https://protonmatter-weather-dashboard.pages.dev/> after first activation.
 
 **Netlify / Vercel** — auto-detected; no configuration needed.
 
@@ -271,11 +306,14 @@ builds outside the pipeline's gates.)
 
 - Open-Meteo: roughly 10k calls/day for non-commercial use
 - Photon: free community service, no published SLA
+- OpenStreetMap standard tiles: policy-limited community service; no bulk or background
+  prefetch and no availability guarantee
 
-Both are fine for personal traffic. Under real load, put a caching proxy in front — a
-Cloudflare Worker on the free tier (100k requests/day) handles this without changing the
-client, since every outbound call already goes through `lib/http.ts` and the provider
-adapters in `lib/providers/`.
+These defaults are suitable only for bounded, non-commercial traffic. Commercial
+Open-Meteo use requires an appropriate licence. Under real load, put a caching proxy in
+front of weather requests only — never the OpenStreetMap standard tile service. RFC 0004
+keeps the weather base URL pluggable, while a production Worker remains a separate design
+and security change.
 
 ## License
 

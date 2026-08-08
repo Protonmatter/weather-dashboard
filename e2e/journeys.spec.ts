@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { MAP_FORECAST_CACHE_TTL_MS } from "../src/lib/map/cache";
 
 /**
  * Functional end-to-end journeys (RFC 0001 §4).
@@ -37,9 +38,47 @@ const forecastFixture = {
   },
 };
 
+const mapTimes = Array.from({ length: 48 }, (_, i) =>
+  new Date(Math.floor(Date.now() / 3600e3) * 3600e3 + i * 3600e3).toISOString().slice(0, 16)
+);
+
+function mapFixture(url: URL): Array<Record<string, unknown>> {
+  const latitudes = (url.searchParams.get("latitude") ?? "").split(",").map(Number);
+  const longitudes = (url.searchParams.get("longitude") ?? "").split(",").map(Number);
+  return latitudes.map((latitude, location) => ({
+    latitude,
+    longitude: longitudes[location],
+    hourly_units: {
+      temperature_2m: "°C",
+      pressure_msl: "hPa",
+      precipitation: "mm",
+      wind_speed_10m: "km/h",
+      wind_direction_10m: "°",
+    },
+    hourly: {
+      time: mapTimes,
+      temperature_2m: mapTimes.map((_, hour) => 8 + location * 0.08 + Math.sin(hour / 6) * 5),
+      pressure_msl: mapTimes.map((_, hour) => 996 + location * 0.18 + Math.cos(hour / 8) * 3),
+      precipitation: mapTimes.map((_, hour) => (location + hour) % 9 === 0 ? 2.4 : 0),
+      wind_speed_10m: mapTimes.map((_, hour) => 12 + (location + hour) % 20),
+      wind_direction_10m: mapTimes.map((_, hour) => (location * 15 + hour * 5) % 360),
+    },
+  }));
+}
+
 async function stubProviders(page: Page): Promise<void> {
-  await page.route("**/api.open-meteo.com/**", (r) =>
-    r.fulfill({ json: forecastFixture })
+  await page.route("**/api.open-meteo.com/**", (r) => {
+    const url = new URL(r.request().url());
+    return r.fulfill({ json: url.pathname.endsWith("/v1/gfs") ? mapFixture(url) : forecastFixture });
+  });
+  await page.route("**/tile.openstreetmap.org/**", (r) =>
+    r.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XqR0WQAAAABJRU5ErkJggg==",
+        "base64"
+      ),
+    })
   );
   await page.route("**/air-quality-api.open-meteo.com/**", (r) =>
     r.fulfill({ json: { current: { us_aqi: 28 } } })
@@ -82,6 +121,17 @@ test("renders a forecast on first load", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByText(/Feels Like/)).toBeVisible();
+  await expect(page.getByText("10-Day Forecast")).toBeVisible();
+});
+
+test("contains a failed lazy map chunk without unmounting the dashboard", async ({ page }) => {
+  await page.route(/\/assets\/ForecastMap-[^/]+\.js(?:\?.*)?$/, (route) => route.abort("failed"));
+  await page.goto("/");
+
+  await expect(page.getByTestId("forecast-map-error")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "Reload dashboard" })).toBeVisible();
+
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByText("10-Day Forecast")).toBeVisible();
 });
 
@@ -150,6 +200,168 @@ test("16:9 desktop viewport switches to the cinema layout", async ({ page }) => 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/");
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
+});
+
+test("updates responsive map height without resetting interaction state", async ({ page }) => {
+  let mapRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(viewport).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(350);
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => mapRequests).toBe(1);
+
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+  const slider = page.getByTestId("forecast-map-time");
+  await slider.focus();
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveValue("1");
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.locator('[data-target="tablet"]')).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(440);
+  await expect(slider).toHaveValue("1");
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBeGreaterThan(2);
+  await page.waitForTimeout(500);
+  const requestsBeforeRecenter = mapRequests;
+  await page.getByRole("button", { name: /Recenter on/ }).click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBeGreaterThan(requestsBeforeRecenter);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(page.locator('[data-target="cinema"]')).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(520);
+  await expect(slider).toHaveValue("1");
+});
+
+test("loads one bounded map grid and scrubs 48 hours without another request", async ({ page }) => {
+  const mapRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests.push(request.url());
+  });
+  await page.goto("/");
+  const card = page.getByTestId("forecast-map-card");
+  await card.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => mapRequests.length).toBe(1);
+
+  const request = new URL(mapRequests[0]!);
+  expect(request.searchParams.get("models")).toBe("gfs_global");
+  expect(request.searchParams.get("forecast_hours")).toBe("48");
+  expect(request.searchParams.get("latitude")!.split(",").length).toBeLessThanOrEqual(117);
+
+  const slider = page.getByTestId("forecast-map-time");
+  await slider.focus();
+  await slider.press("ArrowRight");
+  await expect(page.getByRole("img", { name: /Valid .* UTC/ })).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(mapRequests).toHaveLength(1);
+});
+
+test("refreshes a stationary map grid when its cache entry expires", async ({ page }) => {
+  await page.clock.install();
+  let mapRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
+  });
+
+  await page.goto("/");
+  const card = page.getByTestId("forecast-map-card");
+  await card.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => mapRequests).toBe(1);
+
+  await page.clock.runFor(MAP_FORECAST_CACHE_TTL_MS + 500);
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+});
+
+test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page }) => {
+  let mapRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
+  });
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "Temperature", exact: true }).click();
+  await expect(page.getByRole("img", { name: /Temperature forecast/ })).toBeVisible();
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+  await expect(page.getByRole("img", { name: /Temperature forecast/ })).toBeVisible({ timeout: 15_000 });
+  const wheelDefaultsPrevented = await viewport.evaluate((element) => {
+    return [-40, -40, -40].map((deltaY) => {
+      const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  });
+  expect(wheelDefaultsPrevented).toEqual([true, true, true]);
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await page.waitForTimeout(250);
+  expect(mapRequests).toBe(3);
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(4);
+  await page.getByRole("button", { name: /Recenter on/ }).click();
+});
+
+test("retries a failed forecast request for a newly panned viewport", async ({ page }) => {
+  let mapRequests = 0;
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      mapRequests += 1;
+      if (mapRequests === 2) return route.fulfill({ status: 400, json: { error: "forced failure" } });
+      return route.fulfill({ json: mapFixture(new URL(route.request().url())) });
+    }
+  );
+
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  const retryBox = await retry.boundingBox();
+  expect(retryBox!.width).toBeGreaterThanOrEqual(44);
+  expect(retryBox!.height).toBeGreaterThanOrEqual(44);
+  expect(mapRequests).toBe(2);
+
+  await retry.click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect(retry).toHaveCount(0);
+});
+
+test("map controls remain touch-sized without horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Zoom in" })).toBeVisible();
+  const box = await page.getByRole("button", { name: "Zoom in" }).boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  const attributionBox = await page.getByRole("link", { name: /OpenStreetMap contributors/ }).boundingBox();
+  expect(attributionBox!.width).toBeGreaterThanOrEqual(44);
+  expect(attributionBox!.height).toBeGreaterThanOrEqual(44);
+  const legendBox = await page.getByTestId("forecast-map-legend").boundingBox();
+  expect(attributionBox!.y + attributionBox!.height).toBeLessThanOrEqual(legendBox!.y);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test("android viewport renders without horizontal overflow", async ({ page }) => {
@@ -259,6 +471,7 @@ test("expands a day into its hourly detail without a network call", async ({ pag
   // app never fetched anything. The footer's member count renders only after the last
   // of the load-time fetches resolves — networkidle is not reliable on WebKit here.
   await expect(page.getByText(/GFS ensemble \(\d+\)/)).toBeVisible();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
   const requests: string[] = [];
   page.on("request", (r) => requests.push(r.url()));
   const row = page.getByRole("button", { name: /Sat|Sun|Mon|Tue|Wed|Thu|Fri/ }).nth(1);
@@ -272,6 +485,7 @@ test("expands a day into its hourly detail without a network call", async ({ pag
 
 test("scrubs the precipitation fan into hourly-rate mode with the keyboard", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByText(/GFS ensemble \(\d+\)/)).toBeVisible();
   const fan = page.getByRole("group", { name: /arrow keys inspect hours/ });
   await fan.focus();
   await fan.press("ArrowRight");

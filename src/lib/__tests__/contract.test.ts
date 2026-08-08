@@ -17,10 +17,10 @@ const d = enabled ? describe : describe.skip;
 const LAT = 37.44;
 const LON = -122.14;
 
-async function getJson(url: string): Promise<Record<string, unknown>> {
+async function getJson<T = Record<string, unknown>>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
   expect(res.ok).toBe(true);
-  return (await res.json()) as Record<string, unknown>;
+  return (await res.json()) as T;
 }
 
 d("contract: Open-Meteo forecast", () => {
@@ -60,6 +60,32 @@ d("contract: Open-Meteo ensemble", () => {
     expect(temp.length).toBeGreaterThanOrEqual(10);
     expect(Array.isArray(hourly["time"])).toBe(true);
   }, 40_000);
+});
+
+d("contract: Open-Meteo forecast map", () => {
+  it("returns aligned GFS fields for multiple coordinates", async () => {
+    const locations = await getJson<Array<Record<string, unknown>>>(
+      "https://api.open-meteo.com/v1/gfs" +
+        "?latitude=37.44,38.58,36.17,34.05&longitude=-122.14,-121.49,-115.14,-118.24" +
+        "&hourly=temperature_2m,pressure_msl,precipitation,wind_speed_10m,wind_direction_10m" +
+        "&models=gfs_global&forecast_hours=48&timezone=GMT"
+    );
+    expect(locations).toHaveLength(4);
+    const firstTimes = (locations[0]!["hourly"] as Record<string, unknown[]>)["time"];
+    expect(firstTimes).toHaveLength(48);
+    for (const location of locations) {
+      const hourly = location["hourly"] as Record<string, unknown[]>;
+      const units = location["hourly_units"] as Record<string, string>;
+      expect(hourly["time"]).toEqual(firstTimes);
+      for (const field of ["temperature_2m", "pressure_msl", "precipitation", "wind_speed_10m", "wind_direction_10m"]) {
+        expect(hourly[field]).toHaveLength(48);
+      }
+      expect(units["temperature_2m"]).toContain("C");
+      expect(units["pressure_msl"]).toContain("hPa");
+      expect(units["precipitation"]).toContain("mm");
+      expect(units["wind_speed_10m"]).toContain("km/h");
+    }
+  }, 30_000);
 });
 
 d("contract: Zippopotam", () => {

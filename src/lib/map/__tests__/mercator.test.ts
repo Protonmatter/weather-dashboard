@@ -1,0 +1,104 @@
+import { describe, expect, it } from "vitest";
+import {
+  MAX_MERCATOR_LAT,
+  constrainViewport,
+  geoToScreen,
+  panViewport,
+  project,
+  screenToGeo,
+  unproject,
+  visibleTiles,
+  worldSize,
+  wrapLongitude,
+} from "../mercator";
+import type { MapViewport } from "../types";
+
+const viewport: MapViewport = {
+  center: { lat: 37.44, lon: -122.14 },
+  zoom: 4,
+  width: 800,
+  height: 500,
+};
+
+describe("Web Mercator projection", () => {
+  it("round-trips representative coordinates", () => {
+    for (const point of [
+      { lat: 0, lon: 0 },
+      { lat: 37.44, lon: -122.14 },
+      { lat: -45, lon: 170 },
+    ]) {
+      const result = unproject(project(point, 5), 5);
+      expect(result.lat).toBeCloseTo(point.lat, 8);
+      expect(result.lon).toBeCloseTo(point.lon, 8);
+    }
+  });
+
+  it("clamps polar latitude and wraps longitude", () => {
+    expect(unproject(project({ lat: 90, lon: 540 }, 3), 3).lat).toBeCloseTo(MAX_MERCATOR_LAT, 6);
+    expect(wrapLongitude(181)).toBe(-179);
+    expect(wrapLongitude(-181)).toBe(179);
+  });
+
+  it("maps the viewport center to the screen center", () => {
+    expect(geoToScreen(viewport.center, viewport)).toEqual({ x: 400, y: 250 });
+    const result = screenToGeo({ x: 400, y: 250 }, viewport);
+    expect(result.lat).toBeCloseTo(viewport.center.lat, 8);
+    expect(result.lon).toBeCloseTo(viewport.center.lon, 8);
+  });
+
+  it("keeps nearby points continuous across the antimeridian", () => {
+    const dateline = { ...viewport, center: { lat: 0, lon: 179 } };
+    expect(geoToScreen({ lat: 0, lon: -179 }, dateline).x).toBeGreaterThan(400);
+  });
+
+  it("pans in screen-pixel direction and returns only valid wrapped tiles", () => {
+    const moved = panViewport(viewport, 100, 0);
+    expect(moved.center.lon).toBeLessThan(viewport.center.lon);
+    const tiles = visibleTiles({ ...viewport, center: { lat: 80, lon: 179 } });
+    expect(tiles.length).toBeGreaterThan(0);
+    expect(tiles.every((tile) => tile.x >= 0 && tile.x < 2 ** tile.z)).toBe(true);
+    expect(tiles.every((tile) => tile.y >= 0 && tile.y < 2 ** tile.z)).toBe(true);
+  });
+
+  it("keeps polar viewports and pans inside the finite vertical world", () => {
+    const polar = constrainViewport({
+      ...viewport,
+      center: { lat: 85, lon: 0 },
+      zoom: 2,
+      height: 520,
+    });
+    const size = worldSize(polar.zoom);
+    const centerY = project(polar.center, polar.zoom).y;
+    expect(centerY - polar.height / 2).toBeGreaterThanOrEqual(-1e-8);
+    expect(centerY + polar.height / 2).toBeLessThanOrEqual(size + 1e-8);
+
+    const panned = panViewport(polar, 0, 10_000);
+    const pannedY = project(panned.center, panned.zoom).y;
+    expect(pannedY - panned.height / 2).toBeGreaterThanOrEqual(-1e-8);
+    expect(pannedY + panned.height / 2).toBeLessThanOrEqual(size + 1e-8);
+  });
+
+  it("keeps unwrapped tile identities stable across sub-tile pans", () => {
+    const before = visibleTiles(viewport);
+    const after = visibleTiles(panViewport(viewport, 8, 0));
+    const beforeByIdentity = new Map(
+      before.map((tile) => [`${tile.z}/${tile.worldX}/${tile.y}`, tile])
+    );
+    const retained = after.filter((tile) =>
+      beforeByIdentity.has(`${tile.z}/${tile.worldX}/${tile.y}`)
+    );
+
+    expect(retained.length).toBeGreaterThan(0);
+    expect(retained.some((tile) => {
+      const previous = beforeByIdentity.get(`${tile.z}/${tile.worldX}/${tile.y}`)!;
+      return tile.left !== previous.left;
+    })).toBe(true);
+  });
+
+  it("distinguishes repeated wrapped tiles by their world copy", () => {
+    const wide = visibleTiles({ ...viewport, center: { lat: 0, lon: 179 }, zoom: 2, width: 1_920 });
+    const identities = wide.map((tile) => `${tile.z}/${tile.worldX}/${tile.y}`);
+    expect(new Set(identities).size).toBe(identities.length);
+    expect(new Set(wide.map((tile) => `${tile.z}/${tile.x}/${tile.y}`)).size).toBeLessThan(wide.length);
+  });
+});

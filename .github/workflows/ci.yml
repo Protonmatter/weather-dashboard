@@ -22,6 +22,7 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
+  CLOUDFLARE_PAGES_PROJECT: "protonmatter-weather-dashboard"
 
 jobs:
   static:
@@ -133,15 +134,16 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "20", cache: npm }
-      - run: npm ci
-      - run: npm run build
+      # Deploy the exact artefact already built, budgeted, smoke-tested, and exercised by
+      # E2E. Rebuilding here would make the release subtly different from the evidence.
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
@@ -156,6 +158,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [build, e2e, dependencies]
     runs-on: ubuntu-latest
+    outputs:
+      deployed: ${{ steps.creds.outputs.present }}
+      page_url: ${{ steps.cloudflare.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -175,15 +180,30 @@ jobs:
       - if: steps.creds.outputs.present == 'true'
         run: npm ci
       - if: steps.creds.outputs.present == 'true'
-        run: npm run build
+        uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
       - if: steps.creds.outputs.present == 'true'
         name: Create project if absent, then deploy
+        id: cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx wrangler pages project create weather-dashboard --production-branch=main 2>/dev/null || true
-          npx wrangler pages deploy dist --project-name=weather-dashboard --branch=main
+          set -euo pipefail
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$CLOUDFLARE_PAGES_PROJECT")
+          case "$STATUS" in
+            200) ;;
+            404) npx --yes wrangler@4.120.0 pages project create "$CLOUDFLARE_PAGES_PROJECT" --production-branch=main ;;
+            *) echo "Cloudflare project lookup failed with HTTP $STATUS"; exit 1 ;;
+          esac
+          npx --yes wrangler@4.120.0 pages deploy dist \
+            --project-name="$CLOUDFLARE_PAGES_PROJECT" \
+            --branch=main \
+            --commit-hash="$GITHUB_SHA" \
+            --commit-message="${GITHUB_SHA:0:12} verified CI artefact"
+          echo "page_url=https://${CLOUDFLARE_PAGES_PROJECT}.pages.dev/" >> "$GITHUB_OUTPUT"
 
   post-deploy-smoke:
     name: Post-deploy smoke
@@ -217,4 +237,37 @@ jobs:
             sleep 10
           done
           echo "post-deploy smoke: FAIL"
+          exit 1
+
+  post-deploy-cloudflare-smoke:
+    name: Post-deploy Cloudflare smoke
+    if: needs.deploy-cloudflare.outputs.deployed == 'true'
+    needs: [deploy-cloudflare]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the Cloudflare site responds and mounts
+        env:
+          URL: ${{ needs.deploy-cloudflare.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          echo "probing $URL"
+          for i in 1 2 3 4 5; do
+            HTML=$(curl -fsS --max-time 20 "$URL" || true)
+            if echo "$HTML" | grep -q 'id="root"'; then
+              SRC=$(echo "$HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
+              case "$SRC" in
+                http*) ASSET="$SRC" ;;
+                /*)    ASSET="$(echo "$URL" | sed -E 's#^(https?://[^/]+).*#\1#')$SRC" ;;
+                *)     ASSET="${URL%/}/${SRC#./}" ;;
+              esac
+              echo "entry chunk: $ASSET"
+              if curl -fsS --max-time 20 -o /dev/null "$ASSET"; then
+                echo "Cloudflare post-deploy smoke: PASS"
+                exit 0
+              fi
+            fi
+            echo "attempt $i failed; retrying"
+            sleep 10
+          done
+          echo "Cloudflare post-deploy smoke: FAIL"
           exit 1

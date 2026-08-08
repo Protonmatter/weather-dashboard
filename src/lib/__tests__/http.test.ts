@@ -115,6 +115,29 @@ describe("fetchJson — retry policy", () => {
     expect(isCircuitOpen("https://down.test/e")).toBe(true);
   });
 
+  it("isolates an optional endpoint scope from the host's default circuit", async () => {
+    const spy = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      return url.endsWith("/v1/gfs") ? jsonResponse({}, 500) : jsonResponse({ healthy: true });
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const mapUrl = "https://api.example.test/v1/gfs";
+    for (let i = 0; i < 3; i++) {
+      await expect(fetchJson(mapUrl, {
+        retries: 0,
+        circuitBreakerScope: "forecast-map",
+      })).rejects.toBeTruthy();
+    }
+
+    expect(isCircuitOpen(mapUrl, "forecast-map")).toBe(true);
+    expect(isCircuitOpen("https://api.example.test/v1/forecast")).toBe(false);
+    await expect(fetchJson<{ healthy: boolean }>(
+      "https://api.example.test/v1/forecast",
+      { retries: 0 }
+    )).resolves.toEqual({ healthy: true });
+  });
+
   it("treats 429 as retryable", () => {
     expect(new HttpError("rate limited", 429).retryable).toBe(true);
     expect(new HttpError("not found", 404).retryable).toBe(false);

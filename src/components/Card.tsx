@@ -15,11 +15,12 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  "data-testid"?: string;
 }
 
-export function Card({ title, icon: Icon, children, className = "", style }: CardProps) {
+export function Card({ title, icon: Icon, children, className = "", style, "data-testid": testId }: CardProps) {
   return (
-    <section className={`rounded-3xl p-4 flex flex-col ${className}`} style={{ ...glass, ...style }}>
+    <section className={`rounded-3xl p-4 flex flex-col ${className}`} style={{ ...glass, ...style }} data-testid={testId}>
       {title && (
         <h2
           className="flex items-center gap-1.5 uppercase mb-3"
