@@ -164,7 +164,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: "20", cache: npm }
+        # Wrangler 4.120.0 requires Node 22; keep this deploy-only runtime separate
+        # from the application's Node 20 build and validation baseline.
+        with: { node-version: "22", cache: npm }
       - name: Check for Cloudflare credentials
         id: creds
         env:

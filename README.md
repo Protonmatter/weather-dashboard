@@ -293,9 +293,10 @@ gh secret set CLOUDFLARE_ACCOUNT_ID   # dash.cloudflare.com → Workers & Pages 
 
 The job creates the Pages project on first run, deploys the exact `dist` artefact already
 built, budgeted, smoke-tested, and exercised by E2E, then independently fetches the
-Cloudflare entry chunk. The Linux-only deployment step pins an exact Wrangler version;
-Wrangler is deliberately not a dev dependency because its `workerd` binary does not support
-Windows ARM64. Connecting the repo in the Cloudflare dashboard is intentionally avoided
+Cloudflare entry chunk. The Linux-only deployment step pins an exact Wrangler version and
+its compatible Node 22 runtime; Wrangler is deliberately not a dev dependency because its
+`workerd` binary does not support Windows ARM64. Connecting the repo in the Cloudflare
+dashboard is intentionally avoided
 because that would build outside these gates. The isolated project name is
 `protonmatter-weather-dashboard`, yielding
 <https://protonmatter-weather-dashboard.pages.dev/> after first activation.
