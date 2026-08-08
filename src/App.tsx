@@ -191,7 +191,7 @@ export default function App() {
   const message = notice ?? weather.error ?? search.error;
 
   return (
-    <div className="relative w-full min-h-screen text-white" style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}>
+    <div className="relative w-full min-h-screen overflow-x-clip text-white" style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}>
       <Backdrop wet={cond.wet} isDay={current.isDay} storm={cond.storm} />
 
       <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }} data-target={target}>
