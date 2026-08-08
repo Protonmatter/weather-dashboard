@@ -37,6 +37,8 @@ export interface FetchOptions {
   timeoutMs?: number;
   retries?: number;
   cacheTtlMs?: number;
+  /** Isolates optional endpoint failures without changing the default host-wide breaker. */
+  circuitBreakerScope?: string;
 }
 
 interface CacheEntry {
@@ -93,26 +95,28 @@ function linkedSignal(external: AbortSignal | undefined, timeoutMs: number): {
   };
 }
 
-function breakerKey(url: string): string {
+function breakerKey(url: string, scope?: string): string {
+  let host: string;
   try {
-    return new URL(url).host;
+    host = new URL(url).host;
   } catch {
-    return url;
+    host = url;
   }
+  return scope ? `${host}\u0000${scope}` : host;
 }
 
 /** True when a provider is in cooldown and should be skipped entirely. */
-export function isCircuitOpen(url: string): boolean {
-  const b = breakers.get(breakerKey(url));
+export function isCircuitOpen(url: string, scope?: string): boolean {
+  const b = breakers.get(breakerKey(url, scope));
   return !!b && b.openUntil > Date.now();
 }
 
-function recordSuccess(url: string): void {
-  breakers.delete(breakerKey(url));
+function recordSuccess(url: string, scope?: string): void {
+  breakers.delete(breakerKey(url, scope));
 }
 
-function recordFailure(url: string): void {
-  const key = breakerKey(url);
+function recordFailure(url: string, scope?: string): void {
+  const key = breakerKey(url, scope);
   const b = breakers.get(key) ?? { fails: 0, openUntil: 0 };
   b.fails += 1;
   if (b.fails >= BREAKER_THRESHOLD) b.openUntil = Date.now() + BREAKER_COOLDOWN_MS;
@@ -120,14 +124,22 @@ function recordFailure(url: string): void {
 }
 
 export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promise<T> {
-  const { signal, timeoutMs = 8000, retries = 2, cacheTtlMs = 0 } = opts;
+  const {
+    signal,
+    timeoutMs = 8000,
+    retries = 2,
+    cacheTtlMs = 0,
+    circuitBreakerScope,
+  } = opts;
 
   if (cacheTtlMs > 0) {
     const hit = cache.get(url);
     if (hit && Date.now() - hit.at < cacheTtlMs) return hit.value as T;
   }
 
-  if (isCircuitOpen(url)) throw new HttpError("circuit open", undefined, url);
+  if (isCircuitOpen(url, circuitBreakerScope)) {
+    throw new HttpError("circuit open", undefined, url);
+  }
 
   let lastError: unknown;
 
@@ -140,7 +152,7 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
       if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, url);
       const body = (await res.json()) as T;
 
-      recordSuccess(url);
+      recordSuccess(url, circuitBreakerScope);
       if (cacheTtlMs > 0) {
         if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
         cache.set(url, { at: Date.now(), value: body });
@@ -164,7 +176,7 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
     }
   }
 
-  recordFailure(url);
+  recordFailure(url, circuitBreakerScope);
   throw lastError instanceof Error ? lastError : new HttpError("request failed", undefined, url);
 }
 

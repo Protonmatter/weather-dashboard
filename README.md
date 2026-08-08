@@ -60,7 +60,7 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 218 tests
+npm test            # unit, validation, regression — 219 tests
 npm run contract    # live provider schemas — 6 tests, network required
 npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
@@ -250,7 +250,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 218 tests
+npm test            # 219 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -268,7 +268,8 @@ grid bounds, missing-data interpolation, marching-squares saddles, H/L suppressi
 provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
 freshness, responsive height changes, lazy-chunk containment, stale request generations,
 stationary-grid revalidation, stable tile identity while panning, touch-sized error
-recovery, and retry recovery for a failed viewport.
+recovery and attribution, isolated optional-map circuit breaking, and retry recovery for
+a failed viewport.
 
 ## Deploying
 

@@ -311,7 +311,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
 
         {tileConfig && (
           <a
-            className="absolute bottom-1 right-1 rounded bg-slate-950/75 px-1.5 py-1 text-[9px] text-white underline"
+            className="absolute bottom-1 right-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-950/75 px-2 text-[9px] text-white underline"
             href={tileConfig.attributionUrl}
             target="_blank"
             rel="noreferrer"

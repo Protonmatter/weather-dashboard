@@ -321,6 +321,9 @@ test("map controls remain touch-sized without horizontal overflow", async ({ pag
   const box = await page.getByRole("button", { name: "Zoom in" }).boundingBox();
   expect(box!.width).toBeGreaterThanOrEqual(44);
   expect(box!.height).toBeGreaterThanOrEqual(44);
+  const attributionBox = await page.getByRole("link", { name: /OpenStreetMap contributors/ }).boundingBox();
+  expect(attributionBox!.width).toBeGreaterThanOrEqual(44);
+  expect(attributionBox!.height).toBeGreaterThanOrEqual(44);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth
   );
@@ -448,6 +451,7 @@ test("expands a day into its hourly detail without a network call", async ({ pag
 
 test("scrubs the precipitation fan into hourly-rate mode with the keyboard", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByText(/GFS ensemble \(\d+\)/)).toBeVisible();
   const fan = page.getByRole("group", { name: /arrow keys inspect hours/ });
   await fan.focus();
   await fan.press("ArrowRight");

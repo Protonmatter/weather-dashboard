@@ -82,6 +82,11 @@ describe("map forecast provider", () => {
     );
     expect(parsed.key).toBe("grid");
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ circuitBreakerScope: "forecast-map" })
+    );
   });
 
   it("falls back when the proxy reaches its internal timeout", async () => {

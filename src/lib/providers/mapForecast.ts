@@ -14,7 +14,10 @@ type JsonFetcher = <T>(url: string, opts: {
   timeoutMs: number;
   retries: number;
   cacheTtlMs: number;
+  circuitBreakerScope: string;
 }) => Promise<T>;
+
+const MAP_CIRCUIT_BREAKER_SCOPE = "forecast-map";
 
 const VARIABLES = [
   "temperature_2m",
@@ -129,6 +132,7 @@ export async function fetchMapForecast(
         timeoutMs: 15_000,
         retries: 1,
         cacheTtlMs: 0,
+        circuitBreakerScope: MAP_CIRCUIT_BREAKER_SCOPE,
       });
     } catch (error) {
       // fetchJson uses AbortError for both its own timeout and caller cancellation.
