@@ -1,7 +1,10 @@
 import { contourLevels, contourSegments } from "./contours";
 import { findPressureExtrema } from "./extrema";
 import { bilinearSample } from "./grid";
+import { windFlowAngle } from "./wind";
 import type { MapFrame, MapLayer } from "./types";
+
+export { windFlowAngle } from "./wind";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -24,10 +27,6 @@ const valuesForLayer = (frame: MapFrame, layer: MapLayer): Array<number | null> 
   if (layer === "precipitation") return frame.precipitationMm;
   return frame.pressureHpa;
 };
-
-/** Canvas angle for an arrow that points toward flow from a meteorological "from" bearing. */
-export const windFlowAngle = (fromDegrees: number): number =>
-  ((fromDegrees + 180 - 90) * Math.PI) / 180;
 
 function drawField(
   context: CanvasRenderingContext2D,

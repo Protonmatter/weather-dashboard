@@ -75,7 +75,7 @@ function DeferredForecastMap({
   }, [visible]);
 
   return (
-    <div ref={host}>
+    <div ref={host} data-testid="forecast-map-shell">
       {visible ? (
         <ForecastMapBoundary>
           <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
@@ -221,9 +221,12 @@ export default function App() {
 
         <Hero place={place} current={current} today={today} hourly={hourly} T={T} />
         <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} />
-        <DeferredForecastMap place={place} target={target} unit={unit} enabled={data.live} />
 
-        <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.main }}>
+        <div
+          className={`grid ${layout.gap}`}
+          style={{ gridTemplateColumns: layout.main }}
+          data-testid="forecast-summary"
+        >
           <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} />
           <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.side }}>
             <AirQualityCard aqi={aqi} wet={cond.wet} />
@@ -232,6 +235,8 @@ export default function App() {
             <SunsetCard day={today} />
           </div>
         </div>
+
+        <DeferredForecastMap place={place} target={target} unit={unit} enabled={data.live} />
 
         {score && (
           <div className="mt-4">

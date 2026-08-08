@@ -16,10 +16,12 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   on today. Any day expands in place to its hourly detail, UV, and sun times — served from
   data already fetched, never a new request.
 - **48-hour forecast map** — a keyless, client-side GFS view with mean-sea-level-pressure
-  isobars and H/L centres, temperature and hour-ending precipitation layers, wind-flow
-  arrows, and a UTC time scrubber. Viewport grids are bounded to 63–117 samples and load
-  only when the map approaches the screen; an active stationary grid revalidates when its
-  10-minute in-memory cache window expires.
+  isobars and H/L centres, temperature and hour-ending precipitation layers, data-driven
+  animated wind particles, and a play/pause UTC timeline. Playback advances the 48 already
+  loaded hourly frames without another request; manual scrubbing pauses it. Reduced-motion
+  users get static directional arrows and manual time control. Viewport grids are bounded
+  to 63–117 samples and load only when the map approaches the screen; an active stationary
+  grid revalidates when its 10-minute in-memory cache window expires.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
   total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
@@ -60,7 +62,7 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 223 tests
+npm test            # unit, validation, regression — 227 tests
 npm run contract    # live provider schemas — 6 tests, network required
 npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
@@ -250,7 +252,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 223 tests
+npm test            # 227 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -273,6 +275,10 @@ retry recovery for a failed viewport. Wheel-input coverage verifies coalesced zo
 preventing document scroll, and responsive tests preserve pan and forecast-time state.
 Pressure-extrema tests preserve missing cells and keep nearby opposite H/L systems while
 still suppressing duplicate labels of the same kind.
+Wind-flow tests interpolate vector components across the north-bearing wrap, fail closed on
+missing samples, and verify deterministic bounded particle budgets. Browser journeys also
+verify forecast playback does not refetch, reduced-motion fallback stays manual, and the
+decision summary precedes the exploratory map.
 
 ## Deploying
 

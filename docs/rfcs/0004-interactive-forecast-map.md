@@ -21,9 +21,11 @@ terrain into false low-pressure centres.
 ## 2. Product contract
 
 - The map centres on the selected place and initially shows mean-sea-level pressure.
-- Temperature and forecast-precipitation fields are selectable; wind arrows are an
+- Temperature and forecast-precipitation fields are selectable; wind flow is an
   independent overlay.
-- A 48-hour UTC scrubber changes only the displayed frame. It never initiates a request.
+- A play/pause timeline advances the 48 hourly forecast frames and loops at the end. The
+  UTC scrubber changes only the displayed frame and pauses playback. Neither path initiates
+  a request.
 - Panning or zooming loads a new bounded viewport grid after interaction settles.
 - Clicking the map does not change the dashboard's selected place in this version.
 - Forecast-grid samples never enter the local verification archive. Only the selected
@@ -66,8 +68,13 @@ from overwriting newer state.
   Ambiguous saddles use the cell-centre value as a deterministic decider.
 - H/L centres come from one smoothed grid pass, exclude border cells, require prominence,
   and suppress weaker nearby duplicates.
-- Open-Meteo wind direction is meteorological "from" direction. Flow arrows rotate it
-  180° and the legend states that arrows point toward motion.
+- Open-Meteo wind direction is meteorological "from" direction. The animated Canvas 2D
+  particles advect through bilinearly interpolated east/south vector components; converting
+  to vectors before interpolation avoids the 359°/1° bearing-wrap error. Particle direction
+  and relative speed come from the forecast, while screen velocity is explicitly a visual
+  scale rather than a geographic-distance claim.
+- Particle count is bounded by presentation target, and animation stops while the map or
+  page is hidden. Reduced-motion mode renders static arrows rotated 180° toward motion.
 - No map-library or rendering runtime dependency is added. Initial and total JavaScript
   budgets remain explicit release gates.
 
@@ -77,9 +84,10 @@ Pointer drag, wheel zoom, and two-pointer pinch have keyboard equivalents. Arrow
 `+`/`-` zoom, and `Home` recentres. All controls keep a 44 CSS-pixel minimum target on
 touch layouts. The time slider exposes its valid UTC time.
 
-The canvas has a changing textual summary and `role="img"`; base tiles are decorative.
-Numeric legends, contour labels, H/L glyphs, and wind arrows prevent colour from being the
-only carrier of meaning. Reduced-motion preference disables animated transitions.
+The field canvas has a changing textual summary and `role="img"`; the particle canvas and
+base tiles are decorative. Numeric legends, contour labels, H/L glyphs, and wind direction
+prevent colour from being the only carrier of meaning. Reduced-motion preference disables
+wind and timeline animation while preserving manual scrubbing and static arrows.
 
 ## 6. Failure and privacy boundaries
 
@@ -109,7 +117,8 @@ describe the providers' no-SLA and usage-policy limits.
 ## 8. Release gates
 
 - Initial JavaScript ≤ 70 kB gzip and total JavaScript ≤ 90 kB gzip.
-- Exactly one map forecast request per settled viewport and none during time scrubbing.
+- Exactly one map forecast request per settled viewport and none during playback or time
+  scrubbing.
 - Projection, contour, extrema, parser, reducer, interaction, responsive, and failure-path
   tests pass.
 - Visible data and tile attribution, UTC labelling, and forecast-versus-observation wording

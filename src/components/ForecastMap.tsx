@@ -1,16 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Map as MapIcon, Minus, Navigation, Plus, RotateCcw, Wind } from "lucide-react";
+import { Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
 import { useForecastMap } from "../hooks/useForecastMap";
 import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
+import {
+  advanceWindParticle,
+  createWindField,
+  seedWindParticle,
+  windParticleCount,
+} from "../lib/map/wind";
 import { constrainViewport, geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
 import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
 
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 7;
+const PLAYBACK_INTERVAL_MS = 1_600;
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
+
+const seedFromTime = (time: string): number => {
+  let seed = 2166136261;
+  for (const character of time) {
+    seed ^= character.charCodeAt(0);
+    seed = Math.imul(seed, 16777619);
+  }
+  return seed >>> 0;
+};
 
 const validTime = (raw: string): string => {
   const date = new Date(`${raw}Z`);
@@ -56,6 +72,7 @@ function legend(layer: MapLayer, unit: "F" | "C"): { stops: string; labels: stri
 export default function ForecastMap({ place, target, unit, enabled }: MapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
   const wheelDelta = useRef(0);
@@ -74,6 +91,10 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const [layer, setLayer] = useState<MapLayer>("pressure");
   const [wind, setWind] = useState(true);
   const [timeIndex, setTimeIndex] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [mapVisible, setMapVisible] = useState(true);
+  const [pageVisible, setPageVisible] = useState(() => !document.hidden);
 
   const tileConfig = useMemo(() => {
     try {
@@ -81,6 +102,34 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
     } catch {
       return null;
     }
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = (): void => {
+      setReducedMotion(query.matches);
+      if (query.matches) setPlaying(false);
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const element = mapRef.current;
+    if (!element || !("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setMapVisible(Boolean(entry?.isIntersecting)),
+      { threshold: 0.01 }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const sync = (): void => setPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
   }, []);
 
   useEffect(() => {
@@ -122,7 +171,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   );
   const { state, retry } = useForecastMap(spec, enabled);
   const grid = state.data?.key === spec?.key ? state.data : null;
-  const frame = grid ? frameAt(grid, timeIndex) : null;
+  const frame = useMemo(() => grid ? frameAt(grid, timeIndex) : null, [grid, timeIndex]);
 
   useEffect(() => {
     if (grid && timeIndex >= grid.times.length) setTimeIndex(grid.times.length - 1);
@@ -144,9 +193,96 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
       cols: grid.cols,
       width: viewport.width,
       height: viewport.height,
-      wind,
+      wind: wind && reducedMotion,
     });
-  }, [frame, grid, layer, viewport.height, viewport.width, wind]);
+  }, [frame, grid, layer, reducedMotion, viewport.height, viewport.width, wind]);
+
+  useEffect(() => {
+    const canvas = windCanvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    const clear = (): void => context?.clearRect(0, 0, canvas.width, canvas.height);
+    if (
+      !context || !frame || !grid || !wind || reducedMotion || !mapVisible || !pageVisible ||
+      viewport.width <= 0 || viewport.height <= 0
+    ) {
+      clear();
+      return;
+    }
+
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.round(viewport.width * ratio));
+    canvas.height = Math.max(1, Math.round(viewport.height * ratio));
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, viewport.width, viewport.height);
+
+    const field = createWindField(frame);
+    const count = windParticleCount(target);
+    const initialSeed = seedFromTime(frame.time) ^ Math.round(viewport.width) ^ Math.round(viewport.height);
+    let resetCount = count;
+    const particles = Array.from({ length: count }, (_, index) =>
+      seedWindParticle(initialSeed + index * 17, viewport.width, viewport.height)
+    );
+    let previousTime = performance.now();
+    let animationFrame = 0;
+
+    const animate = (now: number): void => {
+      const elapsedSeconds = Math.min(0.05, Math.max(0.001, (now - previousTime) / 1_000));
+      previousTime = now;
+
+      context.save();
+      context.globalCompositeOperation = "destination-in";
+      context.fillStyle = "rgba(0,0,0,0.88)";
+      context.fillRect(0, 0, viewport.width, viewport.height);
+      context.restore();
+
+      context.save();
+      context.strokeStyle = "rgba(226,246,255,0.82)";
+      context.lineWidth = 1.25;
+      context.lineCap = "round";
+      context.beginPath();
+      for (let index = 0; index < particles.length; index++) {
+        const current = particles[index]!;
+        const next = advanceWindParticle(
+          current,
+          field,
+          grid.rows,
+          grid.cols,
+          viewport.width,
+          viewport.height,
+          elapsedSeconds
+        );
+        if (!next) {
+          const seeded = seedWindParticle(initialSeed + resetCount * 17, viewport.width, viewport.height);
+          resetCount += 1;
+          particles[index] = { ...seeded, ageSeconds: 0 };
+          continue;
+        }
+        context.moveTo(current.x, current.y);
+        context.lineTo(next.x, next.y);
+        particles[index] = next;
+      }
+      context.stroke();
+      context.restore();
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+
+    animationFrame = window.requestAnimationFrame(animate);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      context.clearRect(0, 0, viewport.width, viewport.height);
+    };
+  }, [frame, grid, mapVisible, pageVisible, reducedMotion, target, viewport.height, viewport.width, wind]);
+
+  useEffect(() => {
+    if (!playing || reducedMotion || !mapVisible || !pageVisible || !grid || grid.times.length < 2) return;
+    const timer = window.setInterval(() => {
+      setTimeIndex((current) => (current + 1) % grid.times.length);
+    }, PLAYBACK_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [grid, mapVisible, pageVisible, playing, reducedMotion]);
 
   const changeZoom = useCallback((delta: number): void => {
     setViewport((current) => constrainViewport({
@@ -254,8 +390,9 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const tiles = tileConfig ? visibleTiles(viewport) : [];
   const marker = geoToScreen({ lat: place.lat, lon: place.lon }, viewport);
   const currentLegend = legend(layer, unit);
+  const windDescription = reducedMotion ? "static wind arrows" : "animated wind flow";
   const summary = frame
-    ? `${frameSummary(frame, layer, unit)}. Valid ${validTime(frame.time)}. Wind arrows ${wind ? "shown" : "hidden"}.`
+    ? `${frameSummary(frame, layer, unit)}. Valid ${validTime(frame.time)}. ${wind ? `${windDescription} shown` : "Wind hidden"}.`
     : `Forecast map centred on ${place.name}. Forecast field not loaded.`;
   const busy = state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid);
 
@@ -281,7 +418,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           aria-pressed={wind}
           onClick={() => setWind((value) => !value)}
         >
-          <Wind size={14} aria-hidden="true" /> Wind
+          <Wind size={14} aria-hidden="true" /> Wind flow
         </button>
       </div>
 
@@ -316,6 +453,12 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           ))}
         </div>
         <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" role="img" aria-label={summary} />
+        <canvas
+          ref={windCanvasRef}
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
+          data-testid="forecast-map-wind"
+        />
 
         {marker.x >= 0 && marker.x <= viewport.width && marker.y >= 0 && marker.y <= viewport.height && (
           <div
@@ -345,7 +488,10 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           <div className="mt-1 flex justify-between gap-2" aria-hidden="true">
             {currentLegend.labels.map((label) => <span key={label}>{label}</span>)}
           </div>
-          <p className="mt-1">{currentLegend.note}{wind ? " · arrows point toward motion" : ""}</p>
+          <p className="mt-1">
+            {currentLegend.note}
+            {wind ? reducedMotion ? " · arrows point toward motion" : " · particles follow forecast flow" : ""}
+          </p>
         </div>
 
         {tileConfig && (
@@ -369,8 +515,20 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
       </div>
 
       <div className="mt-3">
-        <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-          <span className="font-medium">{frame ? validTime(frame.time) : "Valid time unavailable"}</span>
+        <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-xs">
+          <button
+            type="button"
+            className={`${CONTROL} min-h-11 gap-1.5 px-3 disabled:cursor-not-allowed disabled:opacity-50`}
+            onClick={() => setPlaying((value) => !value)}
+            disabled={!grid || reducedMotion}
+            aria-label={playing ? "Pause forecast animation" : "Play forecast animation"}
+            title={reducedMotion ? "Playback is off because reduced motion is enabled" : undefined}
+            data-testid="forecast-map-playback"
+          >
+            {playing ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+            {playing ? "Pause" : "Play"}
+          </button>
+          <span className="truncate font-medium">{frame ? validTime(frame.time) : "Valid time unavailable"}</span>
           <span className="text-white/60">UTC · {viewport.zoom.toFixed(0)}×</span>
         </div>
         <input
@@ -379,7 +537,10 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           max={Math.max(0, (grid?.times.length ?? 1) - 1)}
           value={Math.min(timeIndex, Math.max(0, (grid?.times.length ?? 1) - 1))}
           disabled={!grid}
-          onChange={(event) => setTimeIndex(Number(event.currentTarget.value))}
+          onChange={(event) => {
+            setPlaying(false);
+            setTimeIndex(Number(event.currentTarget.value));
+          }}
           className="w-full min-h-11 accent-white"
           aria-label="Forecast valid time"
           aria-valuetext={frame ? validTime(frame.time) : "Unavailable"}
@@ -387,7 +548,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         />
       </div>
 
-      <div className="mt-1 min-h-5 text-[11px] text-white/62" aria-live="polite">
+      <div className="mt-1 min-h-5 text-[11px] text-white/62" aria-live={playing ? "off" : "polite"}>
         {!enabled && "Map waits for a live selected-place forecast."}
         {(state.status === "stale" || state.status === "error") && (
           <span>
@@ -402,6 +563,15 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           </span>
         )}
         {grid && frame && state.status !== "stale" && frameSummary(frame, layer, unit)}
+        {grid && frame && state.status !== "stale" && (
+          <span>
+            {reducedMotion
+              ? " · Motion reduced; use the time slider to inspect forecast hours."
+              : playing
+                ? " · Playing hourly forecast frames."
+                : " · Forecast playback paused."}
+          </span>
+        )}
         {!tileConfig && " Base tiles are unavailable because tile configuration is invalid."}
       </div>
     </Card>

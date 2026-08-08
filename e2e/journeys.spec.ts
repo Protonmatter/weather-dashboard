@@ -117,6 +117,10 @@ test.beforeEach(async ({ page }) => {
   await stubProviders(page);
 });
 
+async function revealForecastMap(page: Page): Promise<void> {
+  await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
+}
+
 test("renders a forecast on first load", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -124,9 +128,18 @@ test("renders a forecast on first load", async ({ page }) => {
   await expect(page.getByText("10-Day Forecast")).toBeVisible();
 });
 
+test("places the decision summary before the exploratory map", async ({ page }) => {
+  await page.goto("/");
+  const order = await page.getByTestId("forecast-summary").evaluate((summary) =>
+    summary.nextElementSibling?.getAttribute("data-testid") === "forecast-map-shell"
+  );
+  expect(order).toBe(true);
+});
+
 test("contains a failed lazy map chunk without unmounting the dashboard", async ({ page }) => {
   await page.route(/\/assets\/ForecastMap-[^/]+\.js(?:\?.*)?$/, (route) => route.abort("failed"));
   await page.goto("/");
+  await revealForecastMap(page);
 
   await expect(page.getByTestId("forecast-map-error")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: "Reload dashboard" })).toBeVisible();
@@ -209,6 +222,7 @@ test("updates responsive map height without resetting interaction state", async 
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await revealForecastMap(page);
   const viewport = page.getByTestId("forecast-map-viewport");
   await viewport.scrollIntoViewIfNeeded();
   await expect(viewport).toBeVisible();
@@ -220,6 +234,8 @@ test("updates responsive map height without resetting interaction state", async 
   await viewport.press("ArrowRight");
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
   const slider = page.getByTestId("forecast-map-time");
+  await page.getByRole("button", { name: "Pause forecast animation" }).click();
+  await slider.fill("0");
   await slider.focus();
   await slider.press("ArrowRight");
   await expect(slider).toHaveValue("1");
@@ -240,12 +256,13 @@ test("updates responsive map height without resetting interaction state", async 
   await expect(slider).toHaveValue("1");
 });
 
-test("loads one bounded map grid and scrubs 48 hours without another request", async ({ page }) => {
+test("animates wind and forecast time from one bounded map request", async ({ page }) => {
   const mapRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests.push(request.url());
   });
   await page.goto("/");
+  await revealForecastMap(page);
   const card = page.getByTestId("forecast-map-card");
   await card.scrollIntoViewIfNeeded();
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
@@ -257,6 +274,22 @@ test("loads one bounded map grid and scrubs 48 hours without another request", a
   expect(request.searchParams.get("latitude")!.split(",").length).toBeLessThanOrEqual(117);
 
   const slider = page.getByTestId("forecast-map-time");
+  const initialTime = await slider.inputValue();
+  await expect.poll(() => slider.inputValue(), { timeout: 5_000 }).not.toBe(initialTime);
+  await expect.poll(
+    () => page.getByTestId("forecast-map-wind").evaluate((canvas) => {
+      const target = canvas as HTMLCanvasElement;
+      const context = target.getContext("2d");
+      if (!context || target.width === 0 || target.height === 0) return false;
+      const pixels = context.getImageData(0, 0, target.width, target.height).data;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (pixels[index]! > 0) return true;
+      }
+      return false;
+    }),
+    { timeout: 5_000 }
+  ).toBe(true);
+  await page.getByRole("button", { name: "Pause forecast animation" }).click();
   await slider.focus();
   await slider.press("ArrowRight");
   await expect(page.getByRole("img", { name: /Valid .* UTC/ })).toBeVisible();
@@ -264,7 +297,23 @@ test("loads one bounded map grid and scrubs 48 hours without another request", a
   expect(mapRequests).toHaveLength(1);
 });
 
+test("reduced motion keeps time manual and wind direction static", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const card = page.getByTestId("forecast-map-shell");
+  await card.scrollIntoViewIfNeeded();
+  const slider = page.getByTestId("forecast-map-time");
+  await expect(slider).toBeEnabled({ timeout: 15_000 });
+  const playback = page.getByRole("button", { name: "Play forecast animation" });
+  await expect(playback).toBeDisabled();
+  const initialTime = await slider.inputValue();
+  await page.waitForTimeout(1_900);
+  await expect(slider).toHaveValue(initialTime);
+  await expect(page.getByRole("img", { name: /static wind arrows shown/ })).toBeVisible();
+});
+
 test("refreshes a stationary map grid when its cache entry expires", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.clock.install();
   let mapRequests = 0;
   page.on("request", (request) => {
@@ -272,6 +321,7 @@ test("refreshes a stationary map grid when its cache entry expires", async ({ pa
   });
 
   await page.goto("/");
+  await revealForecastMap(page);
   const card = page.getByTestId("forecast-map-card");
   await card.scrollIntoViewIfNeeded();
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
@@ -287,6 +337,7 @@ test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page 
     if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
   });
   await page.goto("/");
+  await revealForecastMap(page);
   const viewport = page.getByTestId("forecast-map-viewport");
   await viewport.scrollIntoViewIfNeeded();
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
@@ -325,6 +376,7 @@ test("retries a failed forecast request for a newly panned viewport", async ({ p
   );
 
   await page.goto("/");
+  await revealForecastMap(page);
   const viewport = page.getByTestId("forecast-map-viewport");
   await viewport.scrollIntoViewIfNeeded();
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
@@ -347,6 +399,7 @@ test("retries a failed forecast request for a newly panned viewport", async ({ p
 test("map controls remain touch-sized without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await revealForecastMap(page);
   const viewport = page.getByTestId("forecast-map-viewport");
   await viewport.scrollIntoViewIfNeeded();
   await expect(page.getByRole("button", { name: "Zoom in" })).toBeVisible();
@@ -471,6 +524,7 @@ test("expands a day into its hourly detail without a network call", async ({ pag
   // app never fetched anything. The footer's member count renders only after the last
   // of the load-time fetches resolves — networkidle is not reliable on WebKit here.
   await expect(page.getByText(/GFS ensemble \(\d+\)/)).toBeVisible();
+  await revealForecastMap(page);
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
   const requests: string[] = [];
   page.on("request", (r) => requests.push(r.url()));
