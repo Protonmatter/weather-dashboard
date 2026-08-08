@@ -1,4 +1,4 @@
-import { screenToGeo } from "./mercator";
+import { constrainViewport, screenToGeo } from "./mercator";
 import type { MapFrame, MapForecastGrid, MapGridSpec, MapViewport } from "./types";
 
 const DIMENSIONS = {
@@ -24,25 +24,26 @@ export function createGridSpec(
   target: keyof typeof DIMENSIONS
 ): MapGridSpec {
   const { cols, rows } = DIMENSIONS[target];
+  const boundedViewport = constrainViewport(viewport);
   const points = [];
 
   for (let row = 0; row < rows; row++) {
-    const y = (row / (rows - 1)) * viewport.height;
+    const y = (row / (rows - 1)) * boundedViewport.height;
     for (let col = 0; col < cols; col++) {
-      const x = (col / (cols - 1)) * viewport.width;
-      points.push({ ...screenToGeo({ x, y }, viewport), row, col });
+      const x = (col / (cols - 1)) * boundedViewport.width;
+      points.push({ ...screenToGeo({ x, y }, boundedViewport), row, col });
     }
   }
 
   const key = [
     target,
-    viewport.zoom.toFixed(0),
-    viewport.width.toFixed(0),
-    viewport.height.toFixed(0),
+    boundedViewport.zoom.toFixed(0),
+    boundedViewport.width.toFixed(0),
+    boundedViewport.height.toFixed(0),
     ...points.flatMap((p) => [coordinate(p.lat), coordinate(p.lon)]),
   ].join(":");
 
-  return { key, rows, cols, points, viewport };
+  return { key, rows, cols, points, viewport: boundedViewport };
 }
 
 export function frameAt(grid: MapForecastGrid, index: number): MapFrame {

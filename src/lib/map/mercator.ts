@@ -80,12 +80,25 @@ export function screenToGeo(point: ScreenPoint, viewport: MapViewport): GeoPoint
   );
 }
 
-export function panViewport(viewport: MapViewport, dx: number, dy: number): MapViewport {
+/** Keep the full vertical viewport inside Web Mercator's finite world. */
+export function constrainViewport(viewport: MapViewport): MapViewport {
+  const size = worldSize(viewport.zoom);
   const center = project(viewport.center, viewport.zoom);
+  const halfHeight = Math.min(Math.max(0, viewport.height) / 2, size / 2);
+  const y = Math.min(size - halfHeight, Math.max(halfHeight, center.y));
+  if (y === center.y) return viewport;
   return {
     ...viewport,
-    center: unproject({ x: center.x - dx, y: center.y - dy }, viewport.zoom),
+    center: unproject({ x: center.x, y }, viewport.zoom),
   };
+}
+
+export function panViewport(viewport: MapViewport, dx: number, dy: number): MapViewport {
+  const center = project(viewport.center, viewport.zoom);
+  return constrainViewport({
+    ...viewport,
+    center: unproject({ x: center.x - dx, y: center.y - dy }, viewport.zoom),
+  });
 }
 
 export function visibleTiles(viewport: MapViewport): VisibleTile[] {

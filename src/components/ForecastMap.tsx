@@ -4,7 +4,7 @@ import { Card } from "./Card";
 import { useForecastMap } from "../hooks/useForecastMap";
 import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
-import { geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
+import { constrainViewport, geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
 import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
 
@@ -58,14 +58,19 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
+  const wheelDelta = useRef(0);
+  const wheelTimer = useRef<number | null>(null);
   const targetHeight = mapHeightForTarget(target);
+  const targetZoom = target === "phone" ? 4 : 5;
+  const targetZoomRef = useRef(targetZoom);
+  targetZoomRef.current = targetZoom;
   const [size, setSize] = useState({ width: 0, height: targetHeight });
-  const [viewport, setViewport] = useState<MapViewport>({
+  const [viewport, setViewport] = useState<MapViewport>(() => constrainViewport({
     center: { lat: place.lat, lon: place.lon },
-    zoom: target === "phone" ? 4 : 5,
+    zoom: targetZoom,
     width: 0,
-    height: size.height,
-  });
+    height: targetHeight,
+  }));
   const [layer, setLayer] = useState<MapLayer>("pressure");
   const [wind, setWind] = useState(true);
   const [timeIndex, setTimeIndex] = useState(0);
@@ -95,16 +100,20 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   }, [targetHeight]);
 
   useEffect(() => {
-    setViewport((current) => ({
+    setViewport((current) => constrainViewport({
       ...current,
       center: { lat: place.lat, lon: place.lon },
-      zoom: target === "phone" ? 4 : 5,
+      zoom: targetZoomRef.current,
     }));
     setTimeIndex(0);
-  }, [place.lat, place.lon, target]);
+  }, [place.lat, place.lon]);
 
   useEffect(() => {
-    setViewport((current) => ({ ...current, width: size.width, height: size.height }));
+    setViewport((current) => constrainViewport({
+      ...current,
+      width: size.width,
+      height: size.height,
+    }));
   }, [size]);
 
   const spec = useMemo(
@@ -140,7 +149,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   }, [frame, grid, layer, viewport.height, viewport.width, wind]);
 
   const changeZoom = useCallback((delta: number): void => {
-    setViewport((current) => ({
+    setViewport((current) => constrainViewport({
       ...current,
       zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(current.zoom + delta))),
     }));
@@ -151,14 +160,34 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
     if (!element) return;
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
-      changeZoom(event.deltaY < 0 ? 1 : -1);
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? element.clientHeight
+          : 1;
+      wheelDelta.current += event.deltaY * unit;
+      if (wheelTimer.current != null) window.clearTimeout(wheelTimer.current);
+      wheelTimer.current = window.setTimeout(() => {
+        const delta = wheelDelta.current;
+        wheelDelta.current = 0;
+        wheelTimer.current = null;
+        if (delta !== 0) changeZoom(delta < 0 ? 1 : -1);
+      }, 100);
     };
     element.addEventListener("wheel", onWheel, { passive: false });
-    return () => element.removeEventListener("wheel", onWheel);
+    return () => {
+      element.removeEventListener("wheel", onWheel);
+      if (wheelTimer.current != null) window.clearTimeout(wheelTimer.current);
+      wheelDelta.current = 0;
+      wheelTimer.current = null;
+    };
   }, [changeZoom]);
 
   const recenter = (): void => {
-    setViewport((current) => ({ ...current, center: { lat: place.lat, lon: place.lon } }));
+    setViewport((current) => constrainViewport({
+      ...current,
+      center: { lat: place.lat, lon: place.lon },
+    }));
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {

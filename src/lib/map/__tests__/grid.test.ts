@@ -30,6 +30,20 @@ describe("map sampling grid", () => {
     expect(first.points.some((point) => point.lon > 0)).toBe(true);
   });
 
+  it("does not duplicate polar samples outside the Mercator world", () => {
+    const spec = createGridSpec({
+      ...viewport,
+      center: { lat: 85, lon: 0 },
+      zoom: 2,
+      height: 520,
+    }, "phone");
+    const centerColumnLatitudes = Array.from(
+      { length: spec.rows },
+      (_, row) => spec.points[row * spec.cols + Math.floor(spec.cols / 2)]!.lat
+    );
+    expect(new Set(centerColumnLatitudes.map((lat) => lat.toFixed(6))).size).toBe(spec.rows);
+  });
+
   it.each([
     ["phone", 350],
     ["tablet", 440],

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_MERCATOR_LAT,
+  constrainViewport,
   geoToScreen,
   panViewport,
   project,
   screenToGeo,
   unproject,
   visibleTiles,
+  worldSize,
   wrapLongitude,
 } from "../mercator";
 import type { MapViewport } from "../types";
@@ -56,6 +58,24 @@ describe("Web Mercator projection", () => {
     expect(tiles.length).toBeGreaterThan(0);
     expect(tiles.every((tile) => tile.x >= 0 && tile.x < 2 ** tile.z)).toBe(true);
     expect(tiles.every((tile) => tile.y >= 0 && tile.y < 2 ** tile.z)).toBe(true);
+  });
+
+  it("keeps polar viewports and pans inside the finite vertical world", () => {
+    const polar = constrainViewport({
+      ...viewport,
+      center: { lat: 85, lon: 0 },
+      zoom: 2,
+      height: 520,
+    });
+    const size = worldSize(polar.zoom);
+    const centerY = project(polar.center, polar.zoom).y;
+    expect(centerY - polar.height / 2).toBeGreaterThanOrEqual(-1e-8);
+    expect(centerY + polar.height / 2).toBeLessThanOrEqual(size + 1e-8);
+
+    const panned = panViewport(polar, 0, 10_000);
+    const pannedY = project(panned.center, panned.zoom).y;
+    expect(pannedY - panned.height / 2).toBeGreaterThanOrEqual(-1e-8);
+    expect(pannedY + panned.height / 2).toBeLessThanOrEqual(size + 1e-8);
   });
 
   it("keeps unwrapped tile identities stable across sub-tile pans", () => {

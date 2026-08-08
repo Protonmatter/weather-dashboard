@@ -202,21 +202,42 @@ test("16:9 desktop viewport switches to the cinema layout", async ({ page }) => 
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
 });
 
-test("updates the map height across responsive targets", async ({ page }) => {
+test("updates responsive map height without resetting interaction state", async ({ page }) => {
+  let mapRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const viewport = page.getByTestId("forecast-map-viewport");
   await viewport.scrollIntoViewIfNeeded();
   await expect(viewport).toBeVisible();
   await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(350);
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => mapRequests).toBe(1);
+
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+  const slider = page.getByTestId("forecast-map-time");
+  await slider.focus();
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveValue("1");
 
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(page.locator('[data-target="tablet"]')).toBeVisible();
   await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(440);
+  await expect(slider).toHaveValue("1");
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBeGreaterThan(2);
+  await page.waitForTimeout(500);
+  const requestsBeforeRecenter = mapRequests;
+  await page.getByRole("button", { name: /Recenter on/ }).click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBeGreaterThan(requestsBeforeRecenter);
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
   await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(520);
+  await expect(slider).toHaveValue("1");
 });
 
 test("loads one bounded map grid and scrubs 48 hours without another request", async ({ page }) => {
@@ -276,13 +297,17 @@ test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page 
   await viewport.press("ArrowRight");
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
   await expect(page.getByRole("img", { name: /Temperature forecast/ })).toBeVisible({ timeout: 15_000 });
-  const wheelDefaultPrevented = await viewport.evaluate((element) => {
-    const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 });
-    element.dispatchEvent(event);
-    return event.defaultPrevented;
+  const wheelDefaultsPrevented = await viewport.evaluate((element) => {
+    return [-40, -40, -40].map((deltaY) => {
+      const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
   });
-  expect(wheelDefaultPrevented).toBe(true);
+  expect(wheelDefaultsPrevented).toEqual([true, true, true]);
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await page.waitForTimeout(250);
+  expect(mapRequests).toBe(3);
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(4);
   await page.getByRole("button", { name: /Recenter on/ }).click();

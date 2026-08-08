@@ -60,7 +60,7 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 221 tests
+npm test            # unit, validation, regression — 223 tests
 npm run contract    # live provider schemas — 6 tests, network required
 npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
@@ -250,7 +250,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 221 tests
+npm test            # 223 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -267,9 +267,10 @@ The map suite additionally covers projection round-trips and the antimeridian, a
 grid bounds, missing-data interpolation, marching-squares saddles, H/L suppression,
 provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
 freshness, responsive height changes, lazy-chunk containment, stale request generations,
-stationary-grid revalidation, stable tile identity while panning, touch-sized error
-recovery and attribution, isolated optional-map circuit breaking, and retry recovery for
-a failed viewport. Wheel-input coverage verifies zoom while preventing document scroll.
+stationary-grid revalidation, stable tile identity while panning, polar viewport bounds,
+touch-sized error recovery and attribution, isolated optional-map circuit breaking, and
+retry recovery for a failed viewport. Wheel-input coverage verifies coalesced zoom while
+preventing document scroll, and responsive tests preserve pan and forecast-time state.
 Pressure-extrema tests preserve missing cells and keep nearby opposite H/L systems while
 still suppressing duplicate labels of the same kind.
 
