@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { fetchMapForecast } from "../lib/providers/mapForecast";
-import { isMapForecastFresh } from "../lib/map/cache";
+import { isMapForecastFresh, mapForecastRefreshDelayMs } from "../lib/map/cache";
 import { initialMapLoadState, mapLoadReducer } from "../lib/map/state";
 import type { MapForecastGrid, MapGridSpec } from "../lib/map/types";
 
@@ -29,6 +29,14 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
 
     const id = ++requestId.current;
     const controller = new AbortController();
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = (grid: MapForecastGrid): void => {
+      const delay = mapForecastRefreshDelayMs(grid);
+      if (delay <= 0) return;
+      refreshTimer = window.setTimeout(() => {
+        setRetry((value) => value + 1);
+      }, delay);
+    };
     const timer = window.setTimeout(() => {
       dispatch({ type: "start", requestId: id });
       const cached = cache.current.get(spec.key);
@@ -36,14 +44,17 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
         cache.current.delete(spec.key);
         cache.current.set(spec.key, cached);
         dispatch({ type: "success", requestId: id, data: cached });
+        scheduleRefresh(cached);
         return;
       }
       if (cached) cache.current.delete(spec.key);
 
       void fetchMapForecast(spec, controller.signal)
         .then((grid) => {
+          if (controller.signal.aborted || id !== requestId.current) return;
           remember(cache.current, grid);
           dispatch({ type: "success", requestId: id, data: grid });
+          scheduleRefresh(grid);
         })
         .catch((error: unknown) => {
           // AbortError also represents fetchJson's internal timeout. Only this hook's
@@ -62,6 +73,7 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
 
     return () => {
       window.clearTimeout(timer);
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       controller.abort();
     };
   }, [enabled, retry, spec?.key]);

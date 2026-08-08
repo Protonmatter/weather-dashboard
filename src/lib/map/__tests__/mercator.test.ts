@@ -57,4 +57,28 @@ describe("Web Mercator projection", () => {
     expect(tiles.every((tile) => tile.x >= 0 && tile.x < 2 ** tile.z)).toBe(true);
     expect(tiles.every((tile) => tile.y >= 0 && tile.y < 2 ** tile.z)).toBe(true);
   });
+
+  it("keeps unwrapped tile identities stable across sub-tile pans", () => {
+    const before = visibleTiles(viewport);
+    const after = visibleTiles(panViewport(viewport, 8, 0));
+    const beforeByIdentity = new Map(
+      before.map((tile) => [`${tile.z}/${tile.worldX}/${tile.y}`, tile])
+    );
+    const retained = after.filter((tile) =>
+      beforeByIdentity.has(`${tile.z}/${tile.worldX}/${tile.y}`)
+    );
+
+    expect(retained.length).toBeGreaterThan(0);
+    expect(retained.some((tile) => {
+      const previous = beforeByIdentity.get(`${tile.z}/${tile.worldX}/${tile.y}`)!;
+      return tile.left !== previous.left;
+    })).toBe(true);
+  });
+
+  it("distinguishes repeated wrapped tiles by their world copy", () => {
+    const wide = visibleTiles({ ...viewport, center: { lat: 0, lon: 179 }, zoom: 2, width: 1_920 });
+    const identities = wide.map((tile) => `${tile.z}/${tile.worldX}/${tile.y}`);
+    expect(new Set(identities).size).toBe(identities.length);
+    expect(new Set(wide.map((tile) => `${tile.z}/${tile.x}/${tile.y}`)).size).toBeLessThan(wide.length);
+  });
 });

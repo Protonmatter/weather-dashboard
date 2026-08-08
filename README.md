@@ -18,7 +18,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **48-hour forecast map** — a keyless, client-side GFS view with mean-sea-level-pressure
   isobars and H/L centres, temperature and hour-ending precipitation layers, wind-flow
   arrows, and a UTC time scrubber. Viewport grids are bounded to 63–117 samples and load
-  only when the map approaches the screen.
+  only when the map approaches the screen; an active stationary grid revalidates when its
+  10-minute in-memory cache window expires.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
   total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
@@ -59,9 +60,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 207 tests
+npm test            # unit, validation, regression — 218 tests
 npm run contract    # live provider schemas — 6 tests, network required
-npm run e2e         # functional journeys — 20 per browser project
+npm run e2e         # functional journeys — 24 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -249,7 +250,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 207 tests
+npm test            # 218 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -266,7 +267,8 @@ The map suite additionally covers projection round-trips and the antimeridian, a
 grid bounds, missing-data interpolation, marching-squares saddles, H/L suppression,
 provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
 freshness, responsive height changes, lazy-chunk containment, stale request generations,
-and retry recovery for a failed viewport.
+stationary-grid revalidation, stable tile identity while panning, touch-sized error
+recovery, and retry recovery for a failed viewport.
 
 ## Deploying
 

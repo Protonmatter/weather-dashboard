@@ -266,7 +266,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         <div className="absolute inset-0 bg-slate-700" aria-hidden="true">
           {tiles.map((tile) => (
             <img
-              key={`${tile.z}/${tile.x}/${tile.y}/${tile.left}`}
+              key={`${tile.z}/${tile.worldX}/${tile.y}`}
               src={tileConfig!.template
                 .replace("{z}", String(tile.z))
                 .replace("{x}", String(tile.x))
@@ -352,8 +352,12 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         {(state.status === "stale" || state.status === "error") && (
           <span>
             {state.error}{" "}
-            <button type="button" className="underline" onClick={retry}>
-              <RotateCcw size={11} className="mr-1 inline" aria-hidden="true" />Retry
+            <button
+              type="button"
+              className={`${CONTROL} ml-1 min-h-11 min-w-11 gap-1 px-2 align-middle underline`}
+              onClick={retry}
+            >
+              <RotateCcw size={11} aria-hidden="true" />Retry
             </button>
           </span>
         )}

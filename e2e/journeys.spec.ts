@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { MAP_FORECAST_CACHE_TTL_MS } from "../src/lib/map/cache";
 
 /**
  * Functional end-to-end journeys (RFC 0001 §4).
@@ -242,6 +243,23 @@ test("loads one bounded map grid and scrubs 48 hours without another request", a
   expect(mapRequests).toHaveLength(1);
 });
 
+test("refreshes a stationary map grid when its cache entry expires", async ({ page }) => {
+  await page.clock.install();
+  let mapRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/v1/gfs")) mapRequests++;
+  });
+
+  await page.goto("/");
+  const card = page.getByTestId("forecast-map-card");
+  await card.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => mapRequests).toBe(1);
+
+  await page.clock.runFor(MAP_FORECAST_CACHE_TTL_MS + 500);
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+});
+
 test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page }) => {
   let mapRequests = 0;
   page.on("request", (request) => {
@@ -283,6 +301,9 @@ test("retries a failed forecast request for a newly panned viewport", async ({ p
   await viewport.press("ArrowRight");
   const retry = page.getByRole("button", { name: "Retry" });
   await expect(retry).toBeVisible({ timeout: 15_000 });
+  const retryBox = await retry.boundingBox();
+  expect(retryBox!.width).toBeGreaterThanOrEqual(44);
+  expect(retryBox!.height).toBeGreaterThanOrEqual(44);
   expect(mapRequests).toBe(2);
 
   await retry.click();

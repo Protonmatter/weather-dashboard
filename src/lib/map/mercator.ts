@@ -15,6 +15,8 @@ export interface ScreenPoint {
 
 export interface VisibleTile {
   z: number;
+  /** Unwrapped horizontal tile index; distinguishes repeated world copies. */
+  worldX: number;
   x: number;
   y: number;
   left: number;
@@ -102,6 +104,7 @@ export function visibleTiles(viewport: MapViewport): VisibleTile[] {
       const wrappedX = ((tx % tileCount) + tileCount) % tileCount;
       tiles.push({
         z,
+        worldX: tx,
         x: wrappedX,
         y: ty,
         left: tx * TILE_SIZE - minX,
