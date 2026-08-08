@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon, Minus, Navigation, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
 import { useForecastMap } from "../hooks/useForecastMap";
@@ -139,12 +139,23 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
     });
   }, [frame, grid, layer, viewport.height, viewport.width, wind]);
 
-  const changeZoom = (delta: number): void => {
+  const changeZoom = useCallback((delta: number): void => {
     setViewport((current) => ({
       ...current,
       zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(current.zoom + delta))),
     }));
-  };
+  }, []);
+
+  useEffect(() => {
+    const element = mapRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      changeZoom(event.deltaY < 0 ? 1 : -1);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [changeZoom]);
 
   const recenter = (): void => {
     setViewport((current) => ({ ...current, center: { lat: place.lat, lon: place.lon } }));
@@ -257,10 +268,6 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         onPointerMove={onPointerMove}
         onPointerUp={releasePointer}
         onPointerCancel={releasePointer}
-        onWheel={(event) => {
-          event.preventDefault();
-          changeZoom(event.deltaY < 0 ? 1 : -1);
-        }}
         data-testid="forecast-map-viewport"
       >
         <div className="absolute inset-0 bg-slate-700" aria-hidden="true">

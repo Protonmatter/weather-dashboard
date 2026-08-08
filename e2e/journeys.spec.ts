@@ -276,8 +276,15 @@ test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page 
   await viewport.press("ArrowRight");
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
   await expect(page.getByRole("img", { name: /Temperature forecast/ })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Zoom in" }).click();
+  const wheelDefaultPrevented = await viewport.evaluate((element) => {
+    const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100 });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(wheelDefaultPrevented).toBe(true);
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(4);
   await page.getByRole("button", { name: /Recenter on/ }).click();
 });
 

@@ -269,8 +269,9 @@ provider schema and unit drift, timeout-versus-cancellation fallback, bounded ca
 freshness, responsive height changes, lazy-chunk containment, stale request generations,
 stationary-grid revalidation, stable tile identity while panning, touch-sized error
 recovery and attribution, isolated optional-map circuit breaking, and retry recovery for
-a failed viewport. Pressure-extrema tests preserve missing cells and keep nearby opposite
-H/L systems while still suppressing duplicate labels of the same kind.
+a failed viewport. Wheel-input coverage verifies zoom while preventing document scroll.
+Pressure-extrema tests preserve missing cells and keep nearby opposite H/L systems while
+still suppressing duplicate labels of the same kind.
 
 ## Deploying
 
