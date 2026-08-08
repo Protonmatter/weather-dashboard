@@ -7,6 +7,16 @@ const DIMENSIONS = {
   cinema: { cols: 13, rows: 9 },
 } as const;
 
+const HEIGHTS: Record<keyof typeof DIMENSIONS, number> = {
+  phone: 350,
+  tablet: 440,
+  cinema: 520,
+};
+
+export function mapHeightForTarget(target: keyof typeof DIMENSIONS): number {
+  return HEIGHTS[target];
+}
+
 const coordinate = (value: number): string => value.toFixed(4);
 
 export function createGridSpec(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bilinearSample, createGridSpec, frameAt } from "../grid";
+import { bilinearSample, createGridSpec, frameAt, mapHeightForTarget } from "../grid";
 import type { MapForecastGrid, MapViewport } from "../types";
 
 const viewport: MapViewport = {
@@ -28,6 +28,14 @@ describe("map sampling grid", () => {
     expect(first.key).toBe(second.key);
     expect(first.points.some((point) => point.lon < 0)).toBe(true);
     expect(first.points.some((point) => point.lon > 0)).toBe(true);
+  });
+
+  it.each([
+    ["phone", 350],
+    ["tablet", 440],
+    ["cinema", 520],
+  ] as const)("uses the responsive %s map height", (target, height) => {
+    expect(mapHeightForTarget(target)).toBe(height);
   });
 });
 

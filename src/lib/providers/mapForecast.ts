@@ -1,4 +1,4 @@
-import { fetchJson, HttpError, isAbort } from "../http";
+import { fetchJson, HttpError } from "../http";
 import { weatherBaseUrls } from "../map/config";
 import type { MapForecastGrid, MapForecastPoint, MapGridSpec } from "../map/types";
 
@@ -131,7 +131,9 @@ export async function fetchMapForecast(
         cacheTtlMs: 0,
       });
     } catch (error) {
-      if (isAbort(error)) throw error;
+      // fetchJson uses AbortError for both its own timeout and caller cancellation.
+      // Only the caller's signal is authoritative; an internal timeout may fall back.
+      if (signal?.aborted) throw error;
       lastError = error;
       if (!mayFallback(error) || index === bases.length - 1) break;
       continue;

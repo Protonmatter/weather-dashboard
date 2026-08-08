@@ -123,6 +123,17 @@ test("renders a forecast on first load", async ({ page }) => {
   await expect(page.getByText("10-Day Forecast")).toBeVisible();
 });
 
+test("contains a failed lazy map chunk without unmounting the dashboard", async ({ page }) => {
+  await page.route(/\/assets\/ForecastMap-[^/]+\.js(?:\?.*)?$/, (route) => route.abort("failed"));
+  await page.goto("/");
+
+  await expect(page.getByTestId("forecast-map-error")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "Reload dashboard" })).toBeVisible();
+
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByText("10-Day Forecast")).toBeVisible();
+});
+
 test("surfaces the ensemble precipitation panel with quantiles", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("Precipitation")).toBeVisible();
@@ -190,6 +201,23 @@ test("16:9 desktop viewport switches to the cinema layout", async ({ page }) => 
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
 });
 
+test("updates the map height across responsive targets", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(viewport).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(350);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.locator('[data-target="tablet"]')).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(440);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(page.locator('[data-target="cinema"]')).toBeVisible();
+  await expect.poll(async () => (await viewport.boundingBox())?.height).toBe(520);
+});
+
 test("loads one bounded map grid and scrubs 48 hours without another request", async ({ page }) => {
   const mapRequests: string[] = [];
   page.on("request", (request) => {
@@ -233,6 +261,34 @@ test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page 
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
   await page.getByRole("button", { name: /Recenter on/ }).click();
+});
+
+test("retries a failed forecast request for a newly panned viewport", async ({ page }) => {
+  let mapRequests = 0;
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      mapRequests += 1;
+      if (mapRequests === 2) return route.fulfill({ status: 400, json: { error: "forced failure" } });
+      return route.fulfill({ json: mapFixture(new URL(route.request().url())) });
+    }
+  );
+
+  await page.goto("/");
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  const retry = page.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  expect(mapRequests).toBe(2);
+
+  await retry.click();
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible({ timeout: 15_000 });
+  await expect(retry).toHaveCount(0);
 });
 
 test("map controls remain touch-sized without horizontal overflow", async ({ page }) => {

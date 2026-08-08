@@ -264,7 +264,9 @@ values — CRPS reducing to absolute error for a single member, the decompositio
 reconstructing the Brier score, and the rank histogram's tie handling.
 The map suite additionally covers projection round-trips and the antimeridian, adaptive
 grid bounds, missing-data interpolation, marching-squares saddles, H/L suppression,
-provider schema and unit drift, transient-proxy fallback, and stale request generations.
+provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
+freshness, responsive height changes, lazy-chunk containment, stale request generations,
+and retry recovery for a failed viewport.
 
 ## Deploying
 

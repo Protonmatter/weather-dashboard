@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { fetchMapForecast } from "../lib/providers/mapForecast";
-import { isAbort } from "../lib/http";
+import { isMapForecastFresh } from "../lib/map/cache";
 import { initialMapLoadState, mapLoadReducer } from "../lib/map/state";
 import type { MapForecastGrid, MapGridSpec } from "../lib/map/types";
 
@@ -32,12 +32,13 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
     const timer = window.setTimeout(() => {
       dispatch({ type: "start", requestId: id });
       const cached = cache.current.get(spec.key);
-      if (cached) {
+      if (cached && isMapForecastFresh(cached)) {
         cache.current.delete(spec.key);
         cache.current.set(spec.key, cached);
         dispatch({ type: "success", requestId: id, data: cached });
         return;
       }
+      if (cached) cache.current.delete(spec.key);
 
       void fetchMapForecast(spec, controller.signal)
         .then((grid) => {
@@ -45,7 +46,9 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
           dispatch({ type: "success", requestId: id, data: grid });
         })
         .catch((error: unknown) => {
-          if (isAbort(error)) {
+          // AbortError also represents fetchJson's internal timeout. Only this hook's
+          // controller identifies a superseded or disabled request as cancellation.
+          if (controller.signal.aborted) {
             dispatch({ type: "abort", requestId: id });
             return;
           }

@@ -13,6 +13,7 @@ import {
 } from "./components/Panels";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { Card } from "./components/Card";
+import { ForecastMapBoundary } from "./components/ForecastMapBoundary";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
 import { useViewport } from "./hooks/useViewport";
 import { recordForecast } from "./lib/verification/store";
@@ -76,9 +77,11 @@ function DeferredForecastMap({
   return (
     <div ref={host}>
       {visible ? (
-        <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
-          <ForecastMap place={place} target={target} unit={unit} enabled={enabled} />
-        </Suspense>
+        <ForecastMapBoundary>
+          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
+            <ForecastMap place={place} target={target} unit={unit} enabled={enabled} />
+          </Suspense>
+        </ForecastMapBoundary>
       ) : (
         <Card title="48-hour forecast map" className="mt-4 min-h-72">
           <span className="text-xs text-white/60">Map loads as it approaches the viewport.</span>

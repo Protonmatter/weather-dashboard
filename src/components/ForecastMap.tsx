@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Map as MapIcon, Minus, Navigation, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
 import { useForecastMap } from "../hooks/useForecastMap";
-import { createGridSpec, frameAt } from "../lib/map/grid";
+import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
 import { geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
@@ -58,7 +58,8 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
-  const [size, setSize] = useState({ width: 0, height: target === "phone" ? 350 : target === "cinema" ? 520 : 440 });
+  const targetHeight = mapHeightForTarget(target);
+  const [size, setSize] = useState({ width: 0, height: targetHeight });
   const [viewport, setViewport] = useState<MapViewport>({
     center: { lat: place.lat, lon: place.lon },
     zoom: target === "phone" ? 4 : 5,
@@ -88,6 +89,10 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    setSize((current) => current.height === targetHeight ? current : { ...current, height: targetHeight });
+  }, [targetHeight]);
 
   useEffect(() => {
     setViewport((current) => ({
@@ -344,8 +349,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
 
       <div className="mt-1 min-h-5 text-[11px] text-white/62" aria-live="polite">
         {!enabled && "Map waits for a live selected-place forecast."}
-        {state.status === "stale" && state.error}
-        {state.status === "error" && (
+        {(state.status === "stale" || state.status === "error") && (
           <span>
             {state.error}{" "}
             <button type="button" className="underline" onClick={retry}>

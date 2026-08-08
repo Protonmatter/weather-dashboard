@@ -84,6 +84,36 @@ describe("map forecast provider", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("falls back when the proxy reaches its internal timeout", async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn()
+      .mockRejectedValueOnce(new DOMException("Timeout", "AbortError"))
+      .mockResolvedValueOnce([rawLocation()]);
+
+    await expect(fetchMapForecast(
+      spec,
+      controller.signal,
+      ["https://proxy.test", "https://api.open-meteo.com"],
+      fetcher
+    )).resolves.toMatchObject({ key: "grid" });
+    expect(controller.signal.aborted).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fall back after caller cancellation", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetcher = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
+
+    await expect(fetchMapForecast(
+      spec,
+      controller.signal,
+      ["https://proxy.test", "https://api.open-meteo.com"],
+      fetcher
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("does not fall back on a bad request", async () => {
     const fetcher = vi.fn().mockRejectedValue(new HttpError("HTTP 400", 400));
     await expect(fetchMapForecast(
