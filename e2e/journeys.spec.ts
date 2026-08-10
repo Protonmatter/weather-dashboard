@@ -401,6 +401,40 @@ test("supports keyboard map tabs and describes the active map mode", async ({ pa
   await expect(page.getByRole("heading", { name: "48-hour forecast map" })).toBeVisible();
 });
 
+test("keeps the radar tabpanel relationship while the lazy controls load", async ({ page }) => {
+  let releaseRadarChunk!: () => void;
+  const radarChunkGate = new Promise<void>((resolve) => {
+    releaseRadarChunk = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.includes("/RadarPanel-") && url.pathname.endsWith(".js"),
+    async (route) => {
+      await radarChunkGate;
+      await route.continue();
+    }
+  );
+
+  try {
+    await page.goto("/");
+    await revealForecastMap(page);
+
+    const panel = page.locator("#radar-map-mode-panel");
+    await expect(panel).toHaveCount(1);
+    await expect(panel).toHaveAttribute("role", "tabpanel");
+    await expect(panel).toHaveAttribute("aria-labelledby", "radar-map-tab");
+    await expect(panel).toBeHidden();
+
+    await page.getByRole("tab", { name: "Radar observations" }).click();
+    await expect(panel).toHaveCount(1);
+    await expect(panel).toHaveAttribute("role", "tabpanel");
+    await expect(panel).toHaveAttribute("aria-labelledby", "radar-map-tab");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("status")).toContainText("Loading radar controls");
+  } finally {
+    releaseRadarChunk();
+  }
+});
+
 test("keeps radar playback manual when reduced motion is enabled", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
@@ -412,6 +446,52 @@ test("keeps radar playback manual when reduced motion is enabled", async ({ page
   const initial = await page.getByTestId("radar-time").inputValue();
   await page.waitForTimeout(1_200);
   await expect(page.getByTestId("radar-time")).toHaveValue(initial);
+});
+
+test("waits for a radar layer before advancing playback again", async ({ page }) => {
+  let initialTime: string | null = null;
+  let delayedTime: string | null = null;
+  let releaseDelayedLayer!: () => void;
+  const delayedLayerGate = new Promise<void>((resolve) => {
+    releaseDelayedLayer = resolve;
+  });
+  const requestedTimes = new Set<string>();
+
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage"),
+    async (route) => {
+      const requestTime = new URL(route.request().url()).searchParams.get("time") ?? "missing";
+      requestedTimes.add(requestTime);
+      if (initialTime === null) initialTime = requestTime;
+      if (requestTime !== initialTime) {
+        delayedTime ??= requestTime;
+        if (requestTime === delayedTime) await delayedLayerGate;
+      }
+      await route.fulfill({ contentType: "image/png", body: transparentPixel });
+    }
+  );
+
+  try {
+    await page.goto("/");
+    await revealForecastMap(page);
+    await page.getByRole("tab", { name: "Radar observations" }).click();
+    await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1, { timeout: 15_000 });
+
+    const timeSlider = page.getByTestId("radar-time");
+    await expect(timeSlider).toHaveValue("2");
+    await page.getByRole("button", { name: "Play radar animation" }).click();
+    await expect(timeSlider).toHaveValue("0", { timeout: 3_000 });
+    await expect.poll(() => delayedTime).not.toBeNull();
+
+    await page.waitForTimeout(1_200);
+    expect(requestedTimes.size).toBe(2);
+    await expect(timeSlider).toHaveValue("0");
+
+    releaseDelayedLayer();
+    await expect(timeSlider).toHaveValue("1", { timeout: 3_000 });
+  } finally {
+    releaseDelayedLayer();
+  }
 });
 
 test("disables all continuous backdrop motion when reduced motion is enabled", async ({ page }) => {

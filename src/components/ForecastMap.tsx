@@ -643,9 +643,27 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
       </div>
       </>}
 
+      {!radarRequested && (
+        <div
+          id="radar-map-mode-panel"
+          role="tabpanel"
+          aria-labelledby="radar-map-tab"
+          hidden
+        />
+      )}
       {radarRequested && (
         <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={() => selectMode("forecast")}>
-          <Suspense fallback={mode === "radar" ? <div className="mt-3 min-h-16 text-xs text-white/60" role="status">Loading radar controls…</div> : null}>
+          <Suspense fallback={(
+            <div
+              id="radar-map-mode-panel"
+              role="tabpanel"
+              aria-labelledby="radar-map-tab"
+              hidden={mode !== "radar"}
+              className="mt-3 min-h-16 text-xs text-white/60"
+            >
+              <div role="status">Loading radar controls…</div>
+            </div>
+          )}>
             <RadarPanel
               place={place}
               timezone={timezone}

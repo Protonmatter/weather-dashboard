@@ -135,4 +135,22 @@ describe("radar provider boundary", () => {
 
     expect(bbox[0]).toBeLessThan(bbox[2]!);
   });
+
+  it("clamps a wide NOAA viewport to one ordered Web Mercator world", () => {
+    const url = new URL(noaaImageUrl(
+      { id: "100000", validAt: new Date(100_000) },
+      {
+        center: { lat: 37.4419, lon: -122.143 },
+        zoom: 2,
+        width: 1760,
+        height: 500,
+      },
+      { width: 1760, height: 500 }
+    ));
+    const bbox = url.searchParams.get("bbox")!.split(",").map(Number);
+    const webMercatorWorldWidth = 2 * Math.PI * 6_378_137;
+
+    expect(bbox[0]).toBeLessThan(bbox[2]!);
+    expect(bbox[2]! - bbox[0]!).toBeLessThanOrEqual(webMercatorWorldWidth);
+  });
 });

@@ -27,13 +27,13 @@ export class RadarPanelBoundary extends Component<
 
   override render(): ReactNode {
     if (!this.state.failed) return this.props.children;
-    if (!this.props.active) return null;
 
     return (
       <div
         id="radar-map-mode-panel"
         role="tabpanel"
         aria-labelledby="radar-map-tab"
+        hidden={!this.props.active}
         className="mt-3"
         data-testid="radar-panel-error"
       >

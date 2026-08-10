@@ -1,5 +1,5 @@
 import { fetchJsonWithMetadata } from "../http";
-import { screenToGeo } from "../map/mercator";
+import { screenToGeo, worldSize } from "../map/mercator";
 import type { MapViewport } from "../map/types";
 import type { RadarFrame, RadarSource } from "./types";
 
@@ -63,13 +63,6 @@ function webMercator(point: { lat: number; lon: number }): { x: number; y: numbe
   return { x, y };
 }
 
-function longitudeNear(lon: number, reference: number): number {
-  let candidate = lon;
-  while (candidate - reference > 180) candidate -= 360;
-  while (candidate - reference < -180) candidate += 360;
-  return candidate;
-}
-
 export function noaaImageUrl(
   frame: RadarFrame,
   viewport: MapViewport,
@@ -77,13 +70,16 @@ export function noaaImageUrl(
 ): string {
   const northWestGeo = screenToGeo({ x: 0, y: 0 }, viewport);
   const southEastGeo = screenToGeo({ x: viewport.width, y: viewport.height }, viewport);
+  const mapWorldSize = worldSize(viewport.zoom);
+  const visibleWidth = Math.min(mapWorldSize, Math.max(1, viewport.width));
+  const halfLongitudeSpan = visibleWidth / mapWorldSize * 180;
   const northWest = webMercator({
-    ...northWestGeo,
-    lon: longitudeNear(northWestGeo.lon, viewport.center.lon),
+    lat: northWestGeo.lat,
+    lon: viewport.center.lon - halfLongitudeSpan,
   });
   const southEast = webMercator({
-    ...southEastGeo,
-    lon: longitudeNear(southEastGeo.lon, viewport.center.lon),
+    lat: southEastGeo.lat,
+    lon: viewport.center.lon + halfLongitudeSpan,
   });
   const width = Math.min(4096, Math.max(1, Math.round(size.width)));
   const height = Math.min(4096, Math.max(1, Math.round(size.height)));

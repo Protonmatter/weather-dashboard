@@ -57,6 +57,7 @@ export default function RadarPanel({
   const [playing, setPlaying] = useState(false);
   const [imageFailure, setImageFailure] = useState<{ requestKey: string; message: string } | null>(null);
   const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
+  const [loadedImageRequestKey, setLoadedImageRequestKey] = useState<string | null>(null);
   const frames = source?.frames ?? [];
   const sourceKey = source ? `${source.provider}:${source.fetchedAt}:${frames.at(-1)?.id ?? "empty"}` : "loading";
   const timeIndex = selection?.sourceKey === sourceKey
@@ -78,17 +79,6 @@ export default function RadarPanel({
   useEffect(() => {
     if (reducedMotion) setPlaying(false);
   }, [reducedMotion]);
-
-  useEffect(() => {
-    if (!active || !playing || reducedMotion || !mapVisible || !pageVisible || frames.length < 2) return;
-    const timer = window.setInterval(() => {
-      setSelection((current) => {
-        const index = current?.sourceKey === sourceKey ? current.index : frames.length - 1;
-        return { sourceKey, index: (index + 1) % frames.length };
-      });
-    }, PLAYBACK_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [active, frames.length, mapVisible, pageVisible, playing, reducedMotion, sourceKey]);
 
   const tiles = useMemo(() => visibleTiles(viewport), [viewport]);
   const radarImages = useMemo<RadarImageSpec[]>(() => {
@@ -113,7 +103,19 @@ export default function RadarPanel({
     return [];
   }, [frame, settledViewport, size, source, tiles]);
   const imageRequestKey = `${sourceKey}:${radarImages.map((image) => image.key).join("|")}`;
+  const imageReady = radarImages.length > 0 && loadedImageRequestKey === imageRequestKey;
   const imageError = imageFailure?.requestKey === imageRequestKey ? imageFailure.message : null;
+
+  useEffect(() => {
+    if (!active || !playing || reducedMotion || !mapVisible || !pageVisible || frames.length < 2 || !imageReady) return;
+    const timer = window.setInterval(() => {
+      setSelection((current) => {
+        const index = current?.sourceKey === sourceKey ? current.index : frames.length - 1;
+        return { sourceKey, index: (index + 1) % frames.length };
+      });
+    }, PLAYBACK_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, frames.length, imageReady, mapVisible, pageVisible, playing, reducedMotion, sourceKey]);
 
   const observed = frame ? frameTime(frame.validAt, timezone) : "Observation time unavailable";
   const radarLabel = imageError
@@ -137,9 +139,12 @@ export default function RadarPanel({
               message: "Radar imagery could not be loaded. The last successful layer remains visible when available.",
             });
           }}
-          onLayerLoad={() => setImageFailure((current) =>
-            current?.requestKey === imageRequestKey ? null : current
-          )}
+          onLayerLoad={() => {
+            setLoadedImageRequestKey(imageRequestKey);
+            setImageFailure((current) =>
+              current?.requestKey === imageRequestKey ? null : current
+            );
+          }}
         />
       )}
       <div className="sr-only" role="img" aria-label={radarLabel} />
