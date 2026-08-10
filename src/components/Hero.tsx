@@ -1,4 +1,5 @@
 import { decodeWMO } from "../lib/wmo";
+import { LocationClock } from "./LocationClock";
 import type { CurrentConditions, DayPoint, HourPoint, Place } from "../lib/types";
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
   today: DayPoint | undefined;
   hourly: readonly HourPoint[];
   T: (f: number) => number;
+  timezone: string;
 }
 
 function summary(hourly: readonly HourPoint[], label: string): string {
@@ -16,7 +18,7 @@ function summary(hourly: readonly HourPoint[], label: string): string {
   return `${label} conditions holding through the evening.`;
 }
 
-export function Hero({ place, current, today, hourly, T }: Props) {
+export function Hero({ place, current, today, hourly, T, timezone }: Props) {
   const cond = decodeWMO(current.code, current.isDay);
 
   return (
@@ -27,6 +29,7 @@ export function Hero({ place, current, today, hourly, T }: Props) {
           {[place.admin, place.country].filter(Boolean).join(", ")}
         </span>
       </div>
+      <div className="mt-1 text-xs"><LocationClock timezone={timezone} /></div>
       <div className="flex items-start gap-3">
         <div style={{ fontSize: "clamp(76px, 15vw, 132px)", fontWeight: 200, lineHeight: 0.95, letterSpacing: "-0.04em", marginTop: 2 }}>
           {T(current.temp)}°

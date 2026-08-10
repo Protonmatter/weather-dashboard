@@ -20,6 +20,8 @@ export interface HourPoint {
   code: number;
   isDay: boolean;
   pop: number;
+  /** Deterministic hour-ending precipitation total, inches. */
+  precipitationIn: number;
 }
 
 export interface DayPoint {
@@ -41,6 +43,12 @@ export interface CurrentConditions {
   wind: number;
   visibility: number;
   pressure: number;
+  /** Backward-looking provider interval total, inches. */
+  precipitationIn: number;
+  /** Current interval normalized to a visual intensity rate, millimetres/hour. */
+  precipRateMmH: number;
+  /** Total cloud cover, percent. */
+  cloudCover: number;
 }
 
 export interface HourQuantiles {
@@ -91,4 +99,10 @@ export interface WeatherBundle {
   aqi: number | null;
   ensemble: EnsembleSummary;
   live: boolean;
+  timezone: string;
+  timezoneAbbreviation: string;
+  utcOffsetSeconds: number;
+  updatedAt: Date;
+  /** Estimated model/analysis accumulation since local midnight, inches. */
+  rainTodayIn: number;
 }

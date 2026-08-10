@@ -27,7 +27,14 @@ export function fallbackBundle(): WeatherBundle {
   const hourly = HOUR_TEMPS.map((temp, i) => {
     const time = new Date(base.getTime() + i * 3600e3);
     const h = time.getHours();
-    return { time, temp, code: HOUR_CODES[i] ?? 0, isDay: h >= 7 && h < 18, pop: HOUR_POP[i] ?? 0 };
+    return {
+      time,
+      temp,
+      code: HOUR_CODES[i] ?? 0,
+      isDay: h >= 7 && h < 18,
+      pop: HOUR_POP[i] ?? 0,
+      precipitationIn: i < 3 ? 0.03 : 0,
+    };
   });
 
   const daily = DAY_ROWS.map(([low, high, code], i) => {
@@ -38,11 +45,28 @@ export function fallbackBundle(): WeatherBundle {
 
   return {
     place: { lat: 37.4419, lon: -122.143, name: "Palo Alto", admin: "California", country: "United States", cc: "us" },
-    current: { temp: 67, feels: 63, code: 61, isDay: true, humidity: 84, wind: 6, visibility: 7.2, pressure: 29.9 },
+    current: {
+      temp: 67,
+      feels: 63,
+      code: 61,
+      isDay: true,
+      humidity: 84,
+      wind: 6,
+      visibility: 7.2,
+      pressure: 29.9,
+      precipitationIn: 0.03,
+      precipRateMmH: 3.048,
+      cloudCover: 88,
+    },
     hourly,
     daily,
     aqi: 28,
     ensemble: { ...ensembleStats(synthMembers(HOUR_POP)), source: "modeled spread", live: false },
     live: false,
+    timezone: "America/Los_Angeles",
+    timezoneAbbreviation: "PST/PDT",
+    utcOffsetSeconds: -28_800,
+    updatedAt: now,
+    rainTodayIn: 0.09,
   };
 }

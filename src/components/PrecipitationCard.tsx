@@ -7,6 +7,7 @@ import type { EnsembleSummary, HourPoint } from "../lib/types";
 interface Props {
   ens: EnsembleSummary;
   hourly: readonly HourPoint[];
+  timezone: string;
 }
 
 const W = 240;
@@ -44,16 +45,16 @@ function FanChart({ ens, active }: { ens: EnsembleSummary; active: number | null
   );
 }
 
-function caption(ens: EnsembleSummary, hourly: readonly HourPoint[]): string {
+function caption(ens: EnsembleSummary, hourly: readonly HourPoint[], timezone: string): string {
   if (ens.t90 < 0.01) return "Every member stays dry through tomorrow.";
   if (ens.t10 >= 0.01)
     return `All members are wet — totals land between ${ens.t10.toFixed(2)}″ and ${ens.t90.toFixed(2)}″.`;
   const peakHour = hourly[Math.min(ens.wettest, hourly.length - 1)];
-  const when = peakHour ? ` Heaviest around ${fmtHour(peakHour.time)}.` : "";
+  const when = peakHour ? ` Heaviest around ${fmtHour(peakHour.time, timezone)}.` : "";
   return `Half the members stay under ${ens.t50.toFixed(2)}″; the wettest tenth reach ${ens.t90.toFixed(2)}″.${when}`;
 }
 
-export function PrecipitationCard({ ens, hourly }: Props) {
+export function PrecipitationCard({ ens, hourly, timezone }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Preview follows the pointer; a pin (click/Enter) survives leaving (RFC 0003 §2.3).
@@ -76,7 +77,7 @@ export function PrecipitationCard({ ens, hourly }: Props) {
 
   const q = shown != null ? ens.perHour[shown] : undefined;
   const hourLabel =
-    shown != null ? (shown === 0 ? "now" : (hourly[shown] ? fmtHour(hourly[shown]!.time) : `+${shown}h`)) : null;
+    shown != null ? (shown === 0 ? "now" : (hourly[shown] ? fmtHour(hourly[shown]!.time, timezone) : `+${shown}h`)) : null;
 
   const quantiles: ReadonlyArray<readonly [string, number, string]> = q
     ? [
@@ -185,7 +186,7 @@ export function PrecipitationCard({ ens, hourly }: Props) {
       </div>
 
       <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 10, lineHeight: 1.35 }}>
-        {caption(ens, hourly)}
+        {caption(ens, hourly, timezone)}
       </p>
     </Card>
   );

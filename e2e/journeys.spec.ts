@@ -10,13 +10,19 @@ import { MAP_FORECAST_CACHE_TTL_MS } from "../src/lib/map/cache";
  * Live provider behaviour is covered separately by the contract suite.
  */
 
+const fixtureNow = Math.floor(Date.now() / 3600e3) * 3600;
 const forecastFixture = {
+  timezone: "America/Los_Angeles",
+  timezone_abbreviation: "PDT",
+  utc_offset_seconds: -25_200,
   current: {
     temperature_2m: 67, apparent_temperature: 63, relative_humidity_2m: 84,
     weather_code: 61, is_day: 1, wind_speed_10m: 6, surface_pressure: 1013,
+    time: fixtureNow, interval: 900, precipitation: 0.04, rain: 0.04,
+    showers: 0, snowfall: 0, cloud_cover: 92,
   },
   hourly: {
-    time: Array.from({ length: 48 }, (_, i) => new Date(Date.now() + (i - 2) * 3600e3).toISOString().slice(0, 16)),
+    time: Array.from({ length: 48 }, (_, i) => fixtureNow + (i - 2) * 3600),
     temperature_2m: Array.from({ length: 48 }, (_, i) => 60 + (i % 12)),
     weather_code: Array.from({ length: 48 }, () => 61),
     precipitation_probability: Array.from({ length: 48 }, (_, i) => (i * 7) % 100),
@@ -28,15 +34,26 @@ const forecastFixture = {
     precipitation: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
   },
   daily: {
-    time: Array.from({ length: 10 }, (_, i) => new Date(Date.now() + i * 86400e3).toISOString().slice(0, 10)),
+    time: Array.from({ length: 10 }, (_, i) => fixtureNow - (fixtureNow % 86400) + i * 86400),
     weather_code: Array.from({ length: 10 }, () => 61),
     temperature_2m_max: Array.from({ length: 10 }, (_, i) => 72 + i),
     temperature_2m_min: Array.from({ length: 10 }, (_, i) => 54 + i),
-    sunrise: Array.from({ length: 10 }, (_, i) => new Date(Date.now() + i * 86400e3).toISOString().slice(0, 11) + "07:04"),
-    sunset: Array.from({ length: 10 }, (_, i) => new Date(Date.now() + i * 86400e3).toISOString().slice(0, 11) + "17:12"),
+    sunrise: Array.from({ length: 10 }, (_, i) => fixtureNow - (fixtureNow % 86400) + i * 86400 + 14 * 3600),
+    sunset: Array.from({ length: 10 }, (_, i) => fixtureNow - (fixtureNow % 86400) + i * 86400 + 2 * 3600 + 86400),
     uv_index_max: Array.from({ length: 10 }, () => 3),
   },
 };
+
+const radarFrames = [
+  Math.floor(Date.now() / 300_000) * 300_000 - 600_000,
+  Math.floor(Date.now() / 300_000) * 300_000 - 300_000,
+  Math.floor(Date.now() / 300_000) * 300_000,
+];
+
+const transparentPixel = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XqR0WQAAAABJRU5ErkJggg==",
+  "base64"
+);
 
 const mapTimes = Array.from({ length: 48 }, (_, i) =>
   new Date(Math.floor(Date.now() / 3600e3) * 3600e3 + i * 3600e3).toISOString().slice(0, 16)
@@ -69,16 +86,48 @@ function mapFixture(url: URL): Array<Record<string, unknown>> {
 async function stubProviders(page: Page): Promise<void> {
   await page.route("**/api.open-meteo.com/**", (r) => {
     const url = new URL(r.request().url());
-    return r.fulfill({ json: url.pathname.endsWith("/v1/gfs") ? mapFixture(url) : forecastFixture });
+    if (url.pathname.endsWith("/v1/gfs")) return r.fulfill({ json: mapFixture(url) });
+    const isTokyo = Number(url.searchParams.get("latitude")) > 35 && Number(url.searchParams.get("longitude")) > 139;
+    return r.fulfill({
+      json: isTokyo
+        ? { ...forecastFixture, timezone: "Asia/Tokyo", timezone_abbreviation: "JST", utc_offset_seconds: 32_400 }
+        : forecastFixture,
+    });
   });
   await page.route("**/tile.openstreetmap.org/**", (r) =>
     r.fulfill({
       contentType: "image/png",
-      body: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XqR0WQAAAABJRU5ErkJggg==",
-        "base64"
-      ),
+      body: transparentPixel,
     })
+  );
+  await page.route("**/mapservices.weather.noaa.gov/**", (r) => {
+    const url = new URL(r.request().url());
+    if (url.pathname.endsWith("/query")) {
+      return r.fulfill({
+        json: {
+          features: radarFrames.flatMap((idp_validtime, index) => [
+            { attributes: { objectid: index * 2 + 1, idp_validtime } },
+            { attributes: { objectid: index * 2 + 2, idp_validtime } },
+          ]),
+        },
+      });
+    }
+    return r.fulfill({ contentType: "image/png", body: transparentPixel });
+  });
+  await page.route("**/api.rainviewer.com/public/weather-maps.json", (r) =>
+    r.fulfill({
+      json: {
+        version: "2.0",
+        generated: Math.floor(Date.now() / 1000),
+        host: "https://tilecache.rainviewer.com",
+        radar: {
+          past: radarFrames.map((time) => ({ time: Math.floor(time / 1000), path: `/v2/radar/${time}` })),
+        },
+      },
+    })
+  );
+  await page.route("**/tilecache.rainviewer.com/**", (r) =>
+    r.fulfill({ contentType: "image/png", body: transparentPixel })
   );
   await page.route("**/air-quality-api.open-meteo.com/**", (r) =>
     r.fulfill({ json: { current: { us_aqi: 28 } } })
@@ -128,10 +177,53 @@ test("renders a forecast on first load", async ({ page }) => {
   await expect(page.getByText("10-Day Forecast")).toBeVisible();
 });
 
+test("matches the atmospheric scene to current precipitation intensity", async ({ page }) => {
+  await page.goto("/");
+
+  const backdrop = page.getByTestId("weather-backdrop");
+  await expect(backdrop).toHaveAttribute("data-scene", "rain");
+  await expect(backdrop).toHaveAttribute("data-intensity", "moderate");
+});
+
+test("shows a wall clock in the selected location timezone", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId("location-clock")).toContainText(/\d{1,2}:\d{2}:\d{2} [AP]M/);
+  await expect(page.getByTestId("location-clock")).toContainText("PDT");
+});
+
+test("previews and pins weather metric details with keyboard parity", async ({ page }) => {
+  await page.goto("/");
+
+  const humidity = page.getByTestId("weather-metric-humidity");
+  await humidity.focus();
+  await expect(page.getByRole("tooltip")).toContainText("84% relative humidity");
+  await humidity.press("Enter");
+  await expect(page.getByTestId("weather-metric-detail")).toContainText("Relative humidity");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("weather-metric-detail")).toHaveCount(0);
+
+  const metrics = page.getByTestId("weather-metrics");
+  const map = page.getByTestId("forecast-map-shell");
+  expect(await metrics.evaluate((node, mapNode) => Boolean(node.compareDocumentPosition(mapNode as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await map.elementHandle())).toBe(true);
+});
+
+test("opens the same persistent weather detail with a tap", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByTestId("weather-metric-uv").click();
+  await expect(page.getByTestId("weather-metric-detail")).toContainText("UV index");
+});
+
 test("places the decision summary before the exploratory map", async ({ page }) => {
   await page.goto("/");
-  const order = await page.getByTestId("forecast-summary").evaluate((summary) =>
-    summary.nextElementSibling?.getAttribute("data-testid") === "forecast-map-shell"
+  const metrics = await page.getByTestId("weather-metrics").elementHandle();
+  const map = await page.getByTestId("forecast-map-shell").elementHandle();
+  const order = await page.getByTestId("forecast-summary").evaluate(
+    (summary, [metricsNode, mapNode]) =>
+      Boolean(summary.compareDocumentPosition(metricsNode as Node) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      Boolean((metricsNode as Node).compareDocumentPosition(mapNode as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
+    [metrics, map]
   );
   expect(order).toBe(true);
 });
@@ -213,6 +305,92 @@ test("16:9 desktop viewport switches to the cinema layout", async ({ page }) => 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/");
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
+});
+
+test("loads NOAA MRMS only when the U.S. radar mode is selected", async ({ page }) => {
+  let noaaCatalogueRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/query")) {
+      noaaCatalogueRequests += 1;
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await expect(page.getByTestId("forecast-map-viewport")).toBeVisible();
+  expect(noaaCatalogueRequests).toBe(0);
+
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect(page.getByTestId("radar-source")).toContainText("NOAA / NWS MRMS", { timeout: 15_000 });
+  await expect(page.getByTestId("radar-time")).toBeEnabled();
+  await expect(page.getByRole("link", { name: "NOAA / NWS MRMS" })).toBeVisible();
+  expect(noaaCatalogueRequests).toBe(1);
+
+  await page.getByRole("tab", { name: "Forecast fields" }).click();
+  await expect(page.getByTestId("forecast-map-time")).toBeVisible();
+  await expect(page.getByTestId("radar-time")).toBeHidden();
+});
+
+test("uses RainViewer outside the U.S. and keeps location-local time", async ({ page }) => {
+  let rainViewerRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("api.rainviewer.com/public/weather-maps.json")) rainViewerRequests += 1;
+  });
+
+  await page.goto("/");
+  await page.getByRole("combobox").fill("Tokyo");
+  await page.getByRole("option").first().click();
+  await expect(page.getByTestId("location-clock")).toContainText(/JST|GMT\+9/);
+  await revealForecastMap(page);
+  expect(rainViewerRequests).toBe(0);
+
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect(page.getByTestId("radar-source")).toContainText("RainViewer", { timeout: 15_000 });
+  await expect(page.getByRole("link", { name: "Radar data by RainViewer" })).toBeVisible();
+  expect(rainViewerRequests).toBe(1);
+});
+
+test("keeps radar playback manual when reduced motion is enabled", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+
+  await expect(page.getByTestId("radar-time")).toBeEnabled({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Play radar animation" })).toBeDisabled();
+  const initial = await page.getByTestId("radar-time").inputValue();
+  await page.waitForTimeout(1_200);
+  await expect(page.getByTestId("radar-time")).toHaveValue(initial);
+});
+
+test("retries NOAA radar failure without silently switching providers", async ({ page }) => {
+  let noaaRequests = 0;
+  let rainViewerRequests = 0;
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/query"),
+    (route) => {
+      noaaRequests += 1;
+      if (noaaRequests <= 2) return route.fulfill({ status: 503, json: { error: "forced outage" } });
+      return route.fulfill({
+        json: { features: radarFrames.map((idp_validtime) => ({ attributes: { idp_validtime } })) },
+      });
+    }
+  );
+  page.on("request", (request) => {
+    if (request.url().includes("api.rainviewer.com/public/weather-maps.json")) rainViewerRequests += 1;
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+
+  const retry = page.getByRole("button", { name: "Retry radar" });
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  await retry.click();
+  await expect(page.getByTestId("radar-source")).toContainText("NOAA / NWS MRMS", { timeout: 15_000 });
+  expect(noaaRequests).toBe(3);
+  expect(rainViewerRequests).toBe(0);
 });
 
 test("updates responsive map height without resetting interaction state", async ({ page }) => {

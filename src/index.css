@@ -11,6 +11,7 @@ body,
 }
 
 .rainstreak {
+  position: absolute;
   width: 1.5px;
   border-radius: 9999px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.9));
@@ -19,10 +20,60 @@ body,
   animation-iteration-count: infinite;
 }
 
+.scene-snowflake {
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.55);
+  animation: snow-drift linear infinite;
+}
+
+.scene-stars i { animation: star-glow 3.4s ease-in-out infinite alternate; }
+.scene-sun {
+  right: 7%;
+  top: -7rem;
+  width: 24rem;
+  height: 24rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255,241,174,0.48), rgba(255,220,120,0.12) 42%, transparent 72%);
+}
+.scene-clouds span {
+  position: absolute;
+  width: 48vw;
+  height: 16vw;
+  min-height: 90px;
+  border-radius: 50%;
+  background: rgba(225, 236, 245, 0.22);
+  filter: blur(34px);
+  animation: cloud-drift 42s linear infinite alternate;
+}
+.scene-clouds span:nth-child(1) { left: -14%; top: 5%; }
+.scene-clouds span:nth-child(2) { right: -12%; top: 21%; animation-duration: 55s; }
+.scene-clouds span:nth-child(3) { left: 28%; top: 40%; animation-duration: 67s; }
+.scene-fog {
+  background: repeating-linear-gradient(175deg, rgba(255,255,255,0.13) 0 5%, transparent 7% 13%);
+  filter: blur(22px);
+  animation: fog-breathe 12s ease-in-out infinite alternate;
+}
+.scene-storm-flash {
+  background: rgba(210, 228, 255, 0.22);
+  opacity: 0;
+  animation: storm-glow 8s ease-in-out infinite;
+}
+
 @keyframes fall {
   0% { transform: translate3d(0, -18vh, 0); }
   100% { transform: translate3d(-6vh, 112vh, 0); }
 }
+
+@keyframes snow-drift {
+  0% { transform: translate3d(0, -12vh, 0) rotate(0); }
+  100% { transform: translate3d(8vh, 108vh, 0) rotate(180deg); }
+}
+@keyframes star-glow { from { transform: scale(0.8); } to { transform: scale(1.25); } }
+@keyframes cloud-drift { from { transform: translateX(-4vw); } to { transform: translateX(8vw); } }
+@keyframes fog-breathe { from { transform: translateX(-2%); opacity: 0.68; } to { transform: translateX(2%); opacity: 0.9; } }
+@keyframes storm-glow { 0%, 72%, 100% { opacity: 0; } 78%, 84% { opacity: 0.42; } }
 
 .hscroll::-webkit-scrollbar { height: 0; }
 .hscroll { scrollbar-width: none; }
@@ -37,7 +88,8 @@ input::placeholder { color: rgba(255, 255, 255, 0.5); }
 :focus-visible { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 2px; border-radius: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rainlayer { display: none; }
+  .rainlayer, .weather-particles { display: none; }
+  .scene-storm-flash { display: none; }
   .fadein { animation: none; }
 }
 

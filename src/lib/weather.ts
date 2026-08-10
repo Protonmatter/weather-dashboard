@@ -60,5 +60,10 @@ export async function loadWeather(
     aqi: aqiResult,
     ensemble,
     live: true,
+    timezone: forecast.timezone,
+    timezoneAbbreviation: forecast.timezoneAbbreviation,
+    utcOffsetSeconds: forecast.utcOffsetSeconds,
+    updatedAt: forecast.updatedAt,
+    rainTodayIn: forecast.rainTodayIn,
   };
 }

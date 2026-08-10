@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { noaaCatalogueUrl, noaaImageUrl, parseNoaaFrames } from "../radar/noaa";
+import { parseRainViewer, rainViewerTileUrl } from "../radar/rainViewer";
+import type { MapViewport } from "../map/types";
 
 /**
  * Contract tests (RFC 0001 §4).
@@ -23,14 +26,21 @@ async function getJson<T = Record<string, unknown>>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function expectImage(url: string): Promise<void> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  expect(response.ok).toBe(true);
+  expect(response.headers.get("content-type")).toMatch(/^image\/(png|webp)/);
+  expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(100);
+}
+
 d("contract: Open-Meteo forecast", () => {
   it("returns the fields the parser reads", async () => {
     const j = await getJson(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
-        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure` +
-        `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility` +
+        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure,precipitation,rain,showers,snowfall,cloud_cover` +
+        `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility,precipitation` +
         `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
-        `&temperature_unit=fahrenheit&timezone=auto&forecast_days=10`
+        `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&timeformat=unixtime&forecast_days=10`
     );
 
     const current = j["current"] as Record<string, number>;
@@ -39,8 +49,13 @@ d("contract: Open-Meteo forecast", () => {
 
     expect(typeof current["temperature_2m"]).toBe("number");
     expect(typeof current["weather_code"]).toBe("number");
+    expect(typeof current["precipitation"]).toBe("number");
+    expect(typeof current["cloud_cover"]).toBe("number");
+    expect(typeof j["timezone"]).toBe("string");
     expect(Array.isArray(hourly["time"])).toBe(true);
+    expect(typeof hourly["time"]![0]).toBe("number");
     expect(hourly["temperature_2m"]).toHaveLength(hourly["time"]!.length);
+    expect(hourly["precipitation"]).toHaveLength(hourly["time"]!.length);
     expect(daily["time"]).toHaveLength(10);
     expect(daily["sunrise"]).toHaveLength(10);
   }, 30_000);
@@ -51,7 +66,7 @@ d("contract: Open-Meteo ensemble", () => {
     const j = await getJson(
       `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${LAT}&longitude=${LON}` +
         `&hourly=precipitation,temperature_2m&models=gfs025&forecast_days=1` +
-        `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`
+        `&precipitation_unit=inch&temperature_unit=fahrenheit&timeformat=unixtime&timezone=auto`
     );
     const hourly = j["hourly"] as Record<string, unknown>;
     const precip = Object.keys(hourly).filter((k) => k.startsWith("precipitation"));
@@ -59,6 +74,7 @@ d("contract: Open-Meteo ensemble", () => {
     expect(precip.length).toBeGreaterThanOrEqual(10);
     expect(temp.length).toBeGreaterThanOrEqual(10);
     expect(Array.isArray(hourly["time"])).toBe(true);
+    expect(typeof (hourly["time"] as unknown[])[0]).toBe("number");
   }, 40_000);
 });
 
@@ -85,6 +101,45 @@ d("contract: Open-Meteo forecast map", () => {
       expect(units["precipitation"]).toContain("mm");
       expect(units["wind_speed_10m"]).toContain("km/h");
     }
+  }, 30_000);
+});
+
+d("contract: NOAA MRMS radar", () => {
+  it("returns recent, deduplicated observation frames", async () => {
+    const source = parseNoaaFrames(await getJson<unknown>(noaaCatalogueUrl()));
+    expect(source.frames.length).toBeGreaterThan(2);
+    expect(new Set(source.frames.map((frame) => frame.id)).size).toBe(source.frames.length);
+    const newest = source.frames.at(-1)!;
+    expect(Date.now() - newest.validAt.getTime()).toBeLessThan(8 * 60 * 60 * 1000);
+  }, 30_000);
+
+  it("exports a bounded transparent image for a selected frame and viewport", async () => {
+    const source = parseNoaaFrames(await getJson<unknown>(noaaCatalogueUrl()));
+    const viewport: MapViewport = {
+      center: { lat: LAT, lon: LON },
+      zoom: 5,
+      width: 640,
+      height: 400,
+    };
+    await expectImage(noaaImageUrl(source.frames.at(-1)!, viewport, { width: 640, height: 400 }));
+  }, 30_000);
+});
+
+d("contract: RainViewer radar", () => {
+  it("returns recent public observation frames from the approved tile host", async () => {
+    const source = parseRainViewer(await getJson<unknown>("https://api.rainviewer.com/public/weather-maps.json"));
+    expect(source.frames.length).toBeGreaterThan(2);
+    expect(source.imageHost).toBe("https://tilecache.rainviewer.com");
+    expect(Date.now() - source.frames.at(-1)!.validAt.getTime()).toBeLessThan(4 * 60 * 60 * 1000);
+  }, 30_000);
+
+  it("serves the documented public radar tile shape", async () => {
+    const source = parseRainViewer(await getJson<unknown>("https://api.rainviewer.com/public/weather-maps.json"));
+    await expectImage(rainViewerTileUrl(
+      source.frames.at(-1)!,
+      source.imageHost!,
+      { z: 4, x: 2, y: 6 }
+    ));
   }, 30_000);
 });
 

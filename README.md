@@ -8,6 +8,12 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 ## What it does
 
 - **Current conditions** — temperature, feels-like, daily high/low, condition summary
+- **Location-local clock** — a live, seconds-resolution wall clock in the selected place's
+  IANA timezone. Daylight-saving changes follow the place, not the viewer's computer.
+- **Inspectable weather details** — humidity, daily peak UV, estimated rain since local
+  midnight, next-24-hour ensemble rain, wind, visibility, and pressure sit directly above
+  the map. Hover or keyboard focus opens a compact tooltip; click, tap, or Enter pins the
+  same expanded explanation, and Escape closes it.
 - **24-hour strip** — hourly temperature and conditions, with an ensemble temperature band
   (p10–p90 with the median line) drawn beneath it. Shown only when a live ensemble is
   available — a synthetic fallback never fabricates the band. Hover, tap, or tab to any
@@ -22,13 +28,19 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   users get static directional arrows and manual time control. Viewport grids are bounded
   to 63–117 samples and load only when the map approaches the screen; an active stationary
   grid revalidates when its 10-minute in-memory cache window expires.
+- **Observed radar mode** — the same map switches to recent radar observations without
+  losing pan, zoom, or the selected-place marker. U.S. and territory locations use NOAA/NWS
+  MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
+  calls remain dormant until the mode is selected. Both timelines are independently
+  scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
   total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
   any hour's rate quantiles and wet-member share.
 - **Air quality, UV index, sunset arc**, humidity / wind / visibility / pressure
-- **Backdrop reacts to conditions** — night city bokeh, rain streaks on glass when it's actually
-  raining. Respects `prefers-reduced-motion`.
+- **Backdrop reacts to conditions** — deterministic clear-day sun, clear-night stars,
+  cloud, overcast, fog, snow, rain, and thunderstorm scenes. Rain density and speed scale
+  from drizzle through heavy rain. Respects `prefers-reduced-motion`.
 
 ## Specification
 
@@ -38,6 +50,7 @@ Design decisions live in `docs/`, written before implementation:
 - [RFC 0002 — Temperature Verification Track](docs/rfcs/0002-temperature-verification.md)
 - [RFC 0003 — Inspection and Drill-Down](docs/rfcs/0003-inspection-and-drill-down.md)
 - [RFC 0004 — Interactive Forecast Map](docs/rfcs/0004-interactive-forecast-map.md)
+- [RFC 0005 — Local Weather Context and Observed Radar](docs/rfcs/0005-local-context-and-radar.md)
 - [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
 
 ## Pipeline
@@ -62,9 +75,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 227 tests
-npm run contract    # live provider schemas — 6 tests, network required
-npm run e2e         # functional journeys — 24 per browser project
+npm test            # unit, validation, regression — 247 tests
+npm run contract    # live provider schemas — 10 tests, network required
+npm run e2e         # functional journeys — 34 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -163,10 +176,24 @@ Every source is keyless and CORS-enabled, which is why this needs no backend.
 | [Photon](https://photon.komoot.io/) (Komoot / OSM) | Postcodes, addresses, villages, landmarks |
 | [BigDataCloud](https://www.bigdatacloud.com/) | Reverse geocoding for "use my location" |
 | [OpenStreetMap standard tiles](https://operations.osmfoundation.org/policies/tiles/) | Interactive map base layer; visible tiles only, no prefetch or proxy |
+| [NOAA/NWS MRMS](https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer) | Recent base-reflectivity radar frames for U.S. and territory locations |
+| [RainViewer public maps](https://www.rainviewer.com/api/weather-maps-api.html) | Recent radar tiles outside the U.S.; non-commercial use only, maximum zoom 7 |
 
 Photon and Zippopotam are OpenStreetMap-derived. **ODbL attribution is required** if you
 deploy this publicly — see [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright).
 The map also renders visible attribution directly over its tile layer.
+
+Radar provider selection is deterministic from the selected place's ISO country code:
+`US`, `PR`, `VI`, `GU`, and `MP` use NOAA MRMS; all other codes use RainViewer. There is no
+silent fallback from NOAA to a global provider, so an outage cannot quietly change source
+or terms. RainViewer attribution remains visible in the radar detail area. A blank radar
+layer can mean either no precipitation or no provider coverage; the UI says so rather than
+claiming a clear sky.
+
+"Rain today" sums the Open-Meteo hourly precipitation estimate through the current provider
+timestamp in the selected place's local calendar day. It is not a physical rain-gauge
+observation. "Next 24h rain" is the ensemble median and its expanded panel reports p10–p90;
+the two values intentionally answer different questions.
 
 Opening the map sends its bounded coordinate grid to Open-Meteo and requests the visible
 tile range from the configured tile provider. Map grids are held only in a four-entry
@@ -213,6 +240,7 @@ src/
     search.ts        provider fan-out, merge, de-duplication, ranking
     ensemble.ts      quantiles and ensemble summarisation
     map/             Web Mercator, grids, contours, H/L detection, rendering state
+    radar/           NOAA/RainViewer selection, schema validation, bounded image URLs
     weather.ts       forecast assembly; ensembleFor() is the provider seam
     verification/
       metrics.ts     Brier, Murphy decomposition, CRPS, rank histogram
@@ -222,7 +250,7 @@ src/
     units.ts         conversion, colour ramp, formatting
     wmo.ts           WMO 4677 code decoding
     providers/       one adapter per external service, typed at the boundary
-  hooks/             search and forecast-map request lifecycles
+  hooks/             search, forecast-map, and radar request lifecycles
   components/        presentational only
 ```
 
@@ -252,7 +280,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 227 tests
+npm test            # 247 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```
@@ -315,6 +343,10 @@ because that would build outside these gates. The isolated project name is
 - Photon: free community service, no published SLA
 - OpenStreetMap standard tiles: policy-limited community service; no bulk or background
   prefetch and no availability guarantee
+- RainViewer public weather maps: non-commercial use only, maximum zoom 7, recent past
+  observations only, and no availability guarantee
+- NOAA MRMS: public operational service for supported U.S. areas; availability and frame
+  cadence are provider-controlled
 
 These defaults are suitable only for bounded, non-commercial traffic. Commercial
 Open-Meteo use requires an appropriate licence. Under real load, put a caching proxy in
