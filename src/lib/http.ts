@@ -46,6 +46,11 @@ interface CacheEntry {
   value: unknown;
 }
 
+export interface FetchJsonMetadata<T> {
+  value: T;
+  fetchedAt: number;
+}
+
 const cache = new Map<string, CacheEntry>();
 const CACHE_MAX = 200;
 
@@ -123,7 +128,10 @@ function recordFailure(url: string, scope?: string): void {
   breakers.set(key, b);
 }
 
-export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promise<T> {
+export async function fetchJsonWithMetadata<T>(
+  url: string,
+  opts: FetchOptions = {}
+): Promise<FetchJsonMetadata<T>> {
   const {
     signal,
     timeoutMs = 8000,
@@ -134,7 +142,9 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
 
   if (cacheTtlMs > 0) {
     const hit = cache.get(url);
-    if (hit && Date.now() - hit.at < cacheTtlMs) return hit.value as T;
+    if (hit && Date.now() - hit.at < cacheTtlMs) {
+      return { value: hit.value as T, fetchedAt: hit.at };
+    }
   }
 
   if (isCircuitOpen(url, circuitBreakerScope)) {
@@ -151,13 +161,14 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
       const res = await fetch(url, { signal: linked });
       if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status, url);
       const body = (await res.json()) as T;
+      const fetchedAt = Date.now();
 
       recordSuccess(url, circuitBreakerScope);
       if (cacheTtlMs > 0) {
         if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
-        cache.set(url, { at: Date.now(), value: body });
+        cache.set(url, { at: fetchedAt, value: body });
       }
-      return body;
+      return { value: body, fetchedAt };
     } catch (err) {
       done();
 
@@ -178,6 +189,11 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
 
   recordFailure(url, circuitBreakerScope);
   throw lastError instanceof Error ? lastError : new HttpError("request failed", undefined, url);
+}
+
+export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promise<T> {
+  const result = await fetchJsonWithMetadata<T>(url, opts);
+  return result.value;
 }
 
 /** Test seam. */

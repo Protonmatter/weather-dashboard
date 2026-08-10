@@ -32,7 +32,9 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   losing pan, zoom, or the selected-place marker. U.S. and territory locations use NOAA/NWS
   MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
   calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
-  two minutes. Both timelines are independently
+  two minutes from its original network acquisition time. Radar chunk failures stay inside
+  radar mode; imagery failures retain the last complete layer and expose an explicit retry.
+  Both timelines are independently
   scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
@@ -190,7 +192,8 @@ silent fallback from NOAA to a global provider, so an outage cannot quietly chan
 or terms. If the country code cannot be determined, radar fails closed as unavailable instead
 of silently assigning RainViewer. RainViewer attribution remains visible in the radar detail area. A blank radar
 layer can mean either no precipitation or no provider coverage; the UI says so rather than
-claiming a clear sky.
+claiming a clear sky. Image delivery failures are reported separately and are never described
+as valid blank coverage.
 
 "Rain today" sums the Open-Meteo hourly precipitation estimate through the current provider
 timestamp in the selected place's local calendar day. It is not a physical rain-gauge

@@ -64,7 +64,8 @@ occurs during React renders.
 Radar provider code is split into a second lazy chunk. Neither metadata endpoint is contacted
 until the user first selects Radar. Requests use the common abort, timeout, transient retry,
 circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
-revalidation when that freshness window expires.
+revalidation when that freshness window expires. Cache hits preserve the original network
+acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely.
 
 NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box, a fixed
 frame time, transparency, and an image size capped at 4096 pixels per dimension. Viewport
@@ -75,18 +76,21 @@ accepts only `https://tilecache.rainviewer.com`, validates frame paths against t
 
 Both providers retain visible attribution. The UI distinguishes observed radar from forecast
 precipitation and states that a blank layer can mean no precipitation or no radar coverage.
+Image sets become visible only after the complete layer loads. A failed replacement retains
+the prior successful layer when it belongs to the same place and exposes an imagery retry.
 
 ## 5. Failure and verification
 
-Provider failures stay inside radar mode and expose a touch-sized retry without unmounting the
-forecast dashboard. Location changes abort superseded metadata requests and generation guards
-prevent late responses from replacing the current place.
+Provider and lazy radar-chunk failures stay inside radar mode and expose touch-sized recovery
+without unmounting the forecast map or dashboard. Location changes abort superseded metadata
+requests and generation guards prevent late responses from replacing the current place.
 
 Deterministic tests cover timezone/DST formatting, Open-Meteo schema parsing, local-day
 accumulation, scene classification, provider selection, NOAA frame de-duplication, RainViewer
 origin/path validation, antimeridian extents, and bounded image URLs. Production-build browser
 journeys cover lazy network dormancy, U.S. NOAA selection, global RainViewer selection, radar
-catalogue refresh, settled NOAA image swaps, local clock changes, forecast/radar switching,
-mobile interaction, and reduced-motion playback and scenes. Nightly live
+catalogue refresh and acquisition timestamps, settled/retained NOAA image swaps, scoped lazy
+chunk failure, imagery retry, local clock changes, forecast/radar switching, mobile interaction,
+and reduced-motion playback and scenes. Nightly live
 contracts exercise both radar catalogues and representative imagery in addition to the
 weather providers.

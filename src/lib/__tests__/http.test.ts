@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { fetchJson, HttpError, isAbort, isCircuitOpen, __resetHttpState } from "../http";
+import { fetchJson, fetchJsonWithMetadata, HttpError, isAbort, isCircuitOpen, __resetHttpState } from "../http";
 import { mergePlaces } from "../search";
 import type { Place } from "../types";
 
@@ -156,6 +156,20 @@ describe("fetchJson — caching", () => {
     await fetchJson("https://cache.test/f", { cacheTtlMs: 10_000 });
     await fetchJson("https://cache.test/f", { cacheTtlMs: 10_000 });
 
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the original acquisition time when serving a cached response", async () => {
+    const spy = vi.fn(async () => jsonResponse({ v: 1 }));
+    vi.stubGlobal("fetch", spy);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+
+    const first = await fetchJsonWithMetadata("https://cache.test/metadata", { cacheTtlMs: 10_000 });
+    now.mockReturnValue(2_000);
+    const cached = await fetchJsonWithMetadata("https://cache.test/metadata", { cacheTtlMs: 10_000 });
+
+    expect(first).toEqual({ value: { v: 1 }, fetchedAt: 1_000 });
+    expect(cached).toEqual(first);
     expect(spy).toHaveBeenCalledTimes(1);
   });
 

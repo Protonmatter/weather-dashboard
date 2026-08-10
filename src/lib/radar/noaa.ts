@@ -1,4 +1,4 @@
-import { fetchJson } from "../http";
+import { fetchJsonWithMetadata } from "../http";
 import { screenToGeo } from "../map/mercator";
 import type { MapViewport } from "../map/types";
 import type { RadarFrame, RadarSource } from "./types";
@@ -14,7 +14,7 @@ interface NoaaFeature {
   attributes?: { idp_validtime?: unknown };
 }
 
-export function parseNoaaFrames(value: unknown): RadarSource {
+export function parseNoaaFrames(value: unknown, fetchedAt = Date.now()): RadarSource {
   const features = (value as { features?: unknown }).features;
   if (!Array.isArray(features)) throw new Error("NOAA radar returned an invalid frame catalogue");
   const frames = new Map<number, RadarFrame>();
@@ -29,7 +29,7 @@ export function parseNoaaFrames(value: unknown): RadarSource {
     frames: sorted,
     coverage: sorted.length ? "available" : "unavailable",
     attribution: NOAA_ATTRIBUTION,
-    fetchedAt: Date.now(),
+    fetchedAt,
   };
 }
 
@@ -45,14 +45,14 @@ export function noaaCatalogueUrl(): string {
 }
 
 export async function fetchNoaaRadar(signal?: AbortSignal): Promise<RadarSource> {
-  const value = await fetchJson<unknown>(noaaCatalogueUrl(), {
+  const result = await fetchJsonWithMetadata<unknown>(noaaCatalogueUrl(), {
     signal,
     retries: 1,
     timeoutMs: 10_000,
     cacheTtlMs: 120_000,
     circuitBreakerScope: "radar-noaa",
   });
-  return parseNoaaFrames(value);
+  return parseNoaaFrames(result.value, result.fetchedAt);
 }
 
 function webMercator(point: { lat: number; lon: number }): { x: number; y: number } {

@@ -1,4 +1,4 @@
-import { fetchJson } from "../http";
+import { fetchJsonWithMetadata } from "../http";
 import type { RadarFrame, RadarSource, RadarTile } from "./types";
 
 const METADATA = "https://api.rainviewer.com/public/weather-maps.json";
@@ -26,7 +26,7 @@ function secureHost(raw: unknown): string {
 const isFramePath = (path: unknown): path is string =>
   typeof path === "string" && /^\/v2\/radar\/[A-Za-z0-9_-]+$/.test(path);
 
-export function parseRainViewer(value: unknown): RadarSource {
+export function parseRainViewer(value: unknown, fetchedAt = Date.now()): RadarSource {
   const response = value as RainViewerResponse;
   const imageHost = secureHost(response.host);
   const past = response.radar?.past;
@@ -46,19 +46,19 @@ export function parseRainViewer(value: unknown): RadarSource {
     coverage: sorted.length ? "available" : "unavailable",
     attribution: ATTRIBUTION,
     imageHost,
-    fetchedAt: Date.now(),
+    fetchedAt,
   };
 }
 
 export async function fetchRainViewer(signal?: AbortSignal): Promise<RadarSource> {
-  const value = await fetchJson<unknown>(METADATA, {
+  const result = await fetchJsonWithMetadata<unknown>(METADATA, {
     signal,
     retries: 1,
     timeoutMs: 10_000,
     cacheTtlMs: 120_000,
     circuitBreakerScope: "radar-rainviewer",
   });
-  return parseRainViewer(value);
+  return parseRainViewer(result.value, result.fetchedAt);
 }
 
 export function rainViewerTileUrl(

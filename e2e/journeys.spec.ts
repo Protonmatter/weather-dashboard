@@ -253,6 +253,19 @@ test("contains a failed lazy map chunk without unmounting the dashboard", async 
   await expect(page.getByText("10-Day Forecast")).toBeVisible();
 });
 
+test("contains a failed lazy radar chunk within radar mode", async ({ page }) => {
+  await page.route(/\/assets\/RadarPanel-[^/]+\.js(?:\?.*)?$/, (route) => route.abort("failed"));
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+
+  await expect(page.getByTestId("radar-panel-error")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("forecast-map-error")).toHaveCount(0);
+  await page.getByRole("button", { name: "Return to forecast" }).click();
+  await expect(page.getByTestId("forecast-map-time")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "48-hour forecast map" })).toBeVisible();
+});
+
 test("surfaces the ensemble precipitation panel with quantiles", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("Precipitation")).toBeVisible();
@@ -467,6 +480,50 @@ test("settles a NOAA overlay once after a multi-event map drag", async ({ page }
   await page.mouse.up();
 
   await expect.poll(() => imageRequests, { timeout: 15_000 }).toBe(2);
+});
+
+test("retains the loaded NOAA layer and retries a failed image replacement", async ({ page }) => {
+  let initialImageUrl: string | null = null;
+  let replacementImageUrl: string | null = null;
+  let replacementAttempts = 0;
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage"),
+    (route) => {
+      const requestUrl = route.request().url();
+      if (initialImageUrl === null) initialImageUrl = requestUrl;
+      if (requestUrl === initialImageUrl) {
+        return route.fulfill({ contentType: "image/png", body: transparentPixel });
+      }
+      if (replacementImageUrl === null) replacementImageUrl = requestUrl;
+      if (requestUrl === replacementImageUrl) {
+        replacementAttempts += 1;
+        if (replacementAttempts === 1) {
+          return route.fulfill({ status: 503, contentType: "text/plain", body: "forced image outage" });
+        }
+      }
+      return route.fulfill({ contentType: "image/png", body: transparentPixel });
+    }
+  );
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1, { timeout: 15_000 });
+
+  const box = await viewport.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2, { steps: 12 });
+  await page.mouse.up();
+
+  const retry = page.getByRole("button", { name: "Retry radar imagery" });
+  await expect.poll(() => replacementAttempts, { timeout: 15_000 }).toBe(1);
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1);
+  await retry.click();
+  await expect(retry).toBeHidden({ timeout: 15_000 });
+  await expect.poll(() => replacementAttempts).toBe(2);
 });
 
 test("retries NOAA radar failure without silently switching providers", async ({ page }) => {

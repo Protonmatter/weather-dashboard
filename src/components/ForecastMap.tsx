@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CloudRain, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
+import { RadarPanelBoundary } from "./RadarPanelBoundary";
 import { useForecastMap } from "../hooks/useForecastMap";
 import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
@@ -643,19 +644,21 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
       </>}
 
       {radarRequested && (
-        <Suspense fallback={mode === "radar" ? <div className="mt-3 min-h-16 text-xs text-white/60" role="status">Loading radar controls…</div> : null}>
-          <RadarPanel
-            place={place}
-            timezone={timezone}
-            viewport={viewport}
-            size={size}
-            overlayHost={radarHost}
-            active={mode === "radar"}
-            reducedMotion={reducedMotion}
-            mapVisible={mapVisible}
-            pageVisible={pageVisible}
-          />
-        </Suspense>
+        <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={() => selectMode("forecast")}>
+          <Suspense fallback={mode === "radar" ? <div className="mt-3 min-h-16 text-xs text-white/60" role="status">Loading radar controls…</div> : null}>
+            <RadarPanel
+              place={place}
+              timezone={timezone}
+              viewport={viewport}
+              size={size}
+              overlayHost={radarHost}
+              active={mode === "radar"}
+              reducedMotion={reducedMotion}
+              mapVisible={mapVisible}
+              pageVisible={pageVisible}
+            />
+          </Suspense>
+        </RadarPanelBoundary>
       )}
     </Card>
   );

@@ -62,6 +62,14 @@ describe("radar provider boundary", () => {
     ]);
   });
 
+  it("uses the catalogue acquisition time supplied by the HTTP cache", () => {
+    expect(parseNoaaFrames({ features: [] }, 123_000).fetchedAt).toBe(123_000);
+    expect(parseRainViewer({
+      host: "https://tilecache.rainviewer.com",
+      radar: { past: [] },
+    }, 456_000).fetchedAt).toBe(456_000);
+  });
+
   it("rejects an insecure RainViewer image origin", () => {
     expect(() => parseRainViewer({
       version: "2.0",

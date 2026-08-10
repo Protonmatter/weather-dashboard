@@ -9,6 +9,7 @@ import { radarProviderFor } from "../lib/radar/provider";
 import { rainViewerTileUrl } from "../lib/radar/rainViewer";
 import { formatLocalDate, formatLocalTime, timezoneLabel } from "../lib/time";
 import type { Place } from "../lib/types";
+import { RadarImageLayer, type RadarImageSpec } from "./RadarImageLayer";
 
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
 const PLAYBACK_INTERVAL_MS = 900;
@@ -54,6 +55,8 @@ export default function RadarPanel({
   const settledViewport = useSettledViewport(viewport);
   const [selection, setSelection] = useState<{ sourceKey: string; index: number } | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [imageFailure, setImageFailure] = useState<{ requestKey: string; message: string } | null>(null);
+  const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
   const frames = source?.frames ?? [];
   const sourceKey = source ? `${source.provider}:${source.fetchedAt}:${frames.at(-1)?.id ?? "empty"}` : "loading";
   const timeIndex = selection?.sourceKey === sourceKey
@@ -66,6 +69,7 @@ export default function RadarPanel({
     : provider === "rainviewer"
       ? "RainViewer"
       : "Radar unavailable";
+  const imageContextKey = `${provider}:${place.lat}:${place.lon}`;
 
   useEffect(() => {
     setPlaying(false);
@@ -87,34 +91,57 @@ export default function RadarPanel({
   }, [active, frames.length, mapVisible, pageVisible, playing, reducedMotion, sourceKey]);
 
   const tiles = useMemo(() => visibleTiles(viewport), [viewport]);
+  const radarImages = useMemo<RadarImageSpec[]>(() => {
+    if (source?.provider === "noaa-mrms" && frame && size.width > 0 && size.height > 0) {
+      const src = noaaImageUrl(frame, settledViewport, size);
+      return [{
+        key: src,
+        src,
+        className: "absolute inset-0 h-full w-full object-fill",
+        testId: "radar-noaa-image",
+      }];
+    }
+    if (source?.provider === "rainviewer" && source.imageHost && frame) {
+      return tiles.map((tile) => ({
+        key: `${frame.id}:${tile.z}/${tile.worldX}/${tile.y}`,
+        src: rainViewerTileUrl(frame, source.imageHost!, tile),
+        draggable: false,
+        className: "absolute max-w-none select-none",
+        style: { width: 256, height: 256, left: tile.left, top: tile.top },
+      }));
+    }
+    return [];
+  }, [frame, settledViewport, size, source, tiles]);
+  const imageRequestKey = `${sourceKey}:${radarImages.map((image) => image.key).join("|")}`;
+  const imageError = imageFailure?.requestKey === imageRequestKey ? imageFailure.message : null;
+
   const observed = frame ? frameTime(frame.validAt, timezone) : "Observation time unavailable";
-  const radarLabel = frame
-    ? `${providerLabel} radar observation for ${place.name}. Observed ${observed}.`
-    : `${providerLabel} radar for ${place.name} is unavailable.`;
+  const radarLabel = imageError
+    ? `${providerLabel} radar imagery for ${place.name} could not be loaded.`
+    : frame
+      ? `${providerLabel} radar observation for ${place.name}. Observed ${observed}.`
+      : `${providerLabel} radar for ${place.name} is unavailable.`;
 
   const overlay = overlayHost ? createPortal(
     <div className="absolute inset-0 z-10 pointer-events-none" hidden={!active} data-testid="radar-overlay">
-      {source?.provider === "noaa-mrms" && frame && size.width > 0 && (
-        <img
-          key={`${frame.id}:${settledViewport.center.lat}:${settledViewport.center.lon}:${settledViewport.zoom}:${size.width}:${size.height}`}
-          src={noaaImageUrl(frame, settledViewport, size)}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-fill"
-          data-testid="radar-noaa-image"
+      {radarImages.length > 0 && (
+        <RadarImageLayer
+          contextKey={imageContextKey}
+          requestKey={imageRequestKey}
+          retryGeneration={imageRetryGeneration}
+          images={radarImages}
+          onLayerError={() => {
+            setPlaying(false);
+            setImageFailure({
+              requestKey: imageRequestKey,
+              message: "Radar imagery could not be loaded. The last successful layer remains visible when available.",
+            });
+          }}
+          onLayerLoad={() => setImageFailure((current) =>
+            current?.requestKey === imageRequestKey ? null : current
+          )}
         />
       )}
-      {source?.provider === "rainviewer" && source.imageHost && frame && tiles.map((tile) => (
-        <img
-          key={`${frame.id}:${tile.z}/${tile.worldX}/${tile.y}`}
-          src={rainViewerTileUrl(frame, source.imageHost!, tile)}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-          className="absolute max-w-none select-none"
-          style={{ width: 256, height: 256, left: tile.left, top: tile.top }}
-        />
-      ))}
       <div className="sr-only" role="img" aria-label={radarLabel} />
       <div className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/75 px-2 py-1 text-[10px] text-white/90">
         <div
@@ -180,6 +207,22 @@ export default function RadarPanel({
           data-testid="radar-time"
         />
         <div className="mt-1 min-h-5 text-[11px] text-white/62">
+          {imageError && (
+            <span role="alert">
+              {imageError}{" "}
+              <button
+                type="button"
+                className={`${CONTROL} ml-1 min-h-11 gap-1 px-2 align-middle underline`}
+                onClick={() => {
+                  setImageFailure(null);
+                  setImageRetryGeneration((value) => value + 1);
+                }}
+                aria-label="Retry radar imagery"
+              >
+                <RotateCcw size={11} aria-hidden="true" />Retry imagery
+              </button>
+            </span>
+          )}
           {(state.status === "error" || state.status === "stale") && (
             <span>
               {state.error}{" "}
@@ -188,9 +231,9 @@ export default function RadarPanel({
               </button>
             </span>
           )}
-          {source?.provider === "unavailable" && "Radar is unavailable because the location country could not be determined. Search by city or postal code to select the correct provider."}
-          {source?.provider !== "unavailable" && source?.coverage === "unavailable" && "No radar frames are currently available for this provider."}
-          {source?.coverage === "available" && (
+          {!imageError && source?.provider === "unavailable" && "Radar is unavailable because the location country could not be determined. Search by city or postal code to select the correct provider."}
+          {!imageError && source?.provider !== "unavailable" && source?.coverage === "unavailable" && "No radar frames are currently available for this provider."}
+          {!imageError && source?.coverage === "available" && (
             <span>
               Coverage varies; a blank layer can mean no precipitation or no radar coverage. Data by{" "}
               <a href={source.attribution.url} target="_blank" rel="noreferrer" className="underline" aria-label={source.attribution.label}>
