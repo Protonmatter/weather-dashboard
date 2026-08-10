@@ -364,6 +364,30 @@ test("uses RainViewer outside the U.S. and keeps location-local time", async ({ 
   expect(rainViewerRequests).toBe(1);
 });
 
+test("supports keyboard map tabs and describes the active map mode", async ({ page }) => {
+  await page.goto("/");
+  await revealForecastMap(page);
+
+  const forecastTab = page.getByRole("tab", { name: "Forecast fields" });
+  const radarTab = page.getByRole("tab", { name: "Radar observations" });
+  await expect(forecastTab).toHaveAttribute("tabindex", "0");
+  await expect(radarTab).toHaveAttribute("tabindex", "-1");
+  await expect(page.getByRole("heading", { name: "48-hour forecast map" })).toBeVisible();
+
+  await forecastTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(radarTab).toBeFocused();
+  await expect(radarTab).toHaveAttribute("aria-selected", "true");
+  await expect(radarTab).toHaveAttribute("tabindex", "0");
+  await expect(forecastTab).toHaveAttribute("tabindex", "-1");
+  await expect(page.getByRole("heading", { name: "Radar observations map" })).toBeVisible();
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(forecastTab).toBeFocused();
+  await expect(forecastTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "48-hour forecast map" })).toBeVisible();
+});
+
 test("keeps radar playback manual when reduced motion is enabled", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");

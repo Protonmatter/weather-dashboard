@@ -77,6 +77,14 @@ const PARTICLES: Record<SceneIntensity, number> = {
   heavy: 96,
 };
 
+const RAIN_MOTION: Record<SceneIntensity, Readonly<{ length: number; duration: number; opacity: number }>> = {
+  none: { length: 1, duration: 1, opacity: 1 },
+  drizzle: { length: 0.7, duration: 1.4, opacity: 0.7 },
+  light: { length: 0.85, duration: 1.2, opacity: 0.85 },
+  moderate: { length: 1, duration: 1, opacity: 1 },
+  heavy: { length: 1.3, duration: 0.72, opacity: 1.25 },
+};
+
 export function deriveWeatherScene(current: CurrentConditions): WeatherScene {
   const cloudCover = Math.min(100, Math.max(0, current.cloudCover));
   const kind = kindFor(current.code, cloudCover);
@@ -95,13 +103,20 @@ export function deriveWeatherScene(current: CurrentConditions): WeatherScene {
 export function sceneParticles(scene: WeatherScene, requested: number): SceneParticle[] {
   const count = Math.min(96, Math.max(0, Math.floor(requested)));
   const variant = (scene.seed % 97) / 97;
-  return Array.from({ length: count }, (_, id) => ({
-    id,
-    left: round2(mod(26.75 + id * (37.17 + variant * 11.3), 100)),
-    top: round2(mod(22.74 + id * (53.41 + variant * 7.9), 100)),
-    size: round2(33.71 + mod(id * (17.23 + variant * 5.1), 36)),
-    duration: round2(0.83 + mod(id * (0.19 + variant * 0.07), 0.82)),
-    delay: round2(mod(1.74 + id * (0.43 + variant * 0.13), 3)),
-    opacity: round2(0.32 + mod(id * (0.037 + variant * 0.02), 0.24)),
-  }));
+  const isRain = scene.kind === "rain" || scene.kind === "storm";
+  const motion = isRain ? RAIN_MOTION[scene.intensity] : RAIN_MOTION.none;
+  return Array.from({ length: count }, (_, id) => {
+    const size = 33.71 + mod(id * (17.23 + (isRain ? 0 : variant * 5.1)), 36);
+    const duration = 0.83 + mod(id * (0.19 + (isRain ? 0 : variant * 0.07)), 0.82);
+    const opacity = 0.32 + mod(id * (0.037 + (isRain ? 0 : variant * 0.02)), 0.24);
+    return {
+      id,
+      left: round2(mod(26.75 + id * (37.17 + variant * 11.3), 100)),
+      top: round2(mod(22.74 + id * (53.41 + variant * 7.9), 100)),
+      size: round2(size * motion.length),
+      duration: round2(duration * motion.duration),
+      delay: round2(mod(1.74 + id * (0.43 + variant * 0.13), 3)),
+      opacity: round2(opacity * motion.opacity),
+    };
+  });
 }

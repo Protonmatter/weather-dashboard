@@ -19,6 +19,7 @@ const MAX_ZOOM = 7;
 const PLAYBACK_INTERVAL_MS = 1_600;
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
 const RadarPanel = lazy(() => import("./RadarPanel"));
+type MapMode = "forecast" | "radar";
 
 const seedFromTime = (time: string): number => {
   let seed = 2166136261;
@@ -74,6 +75,8 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const mapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
+  const forecastTabRef = useRef<HTMLButtonElement>(null);
+  const radarTabRef = useRef<HTMLButtonElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
   const wheelDelta = useRef(0);
@@ -96,7 +99,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mapVisible, setMapVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
-  const [mode, setMode] = useState<"forecast" | "radar">("forecast");
+  const [mode, setMode] = useState<MapMode>("forecast");
   const [radarRequested, setRadarRequested] = useState(false);
   const [radarHost, setRadarHost] = useState<HTMLDivElement | null>(null);
 
@@ -330,6 +333,24 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
     }));
   };
 
+  const selectMode = (nextMode: MapMode): void => {
+    if (nextMode === "radar") setRadarRequested(true);
+    setMode(nextMode);
+  };
+
+  const onModeTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: MapMode): void => {
+    let nextMode: MapMode | null = null;
+    if (event.key === "ArrowRight") nextMode = currentMode === "forecast" ? "radar" : "forecast";
+    if (event.key === "ArrowLeft") nextMode = currentMode === "forecast" ? "radar" : "forecast";
+    if (event.key === "Home") nextMode = "forecast";
+    if (event.key === "End") nextMode = "radar";
+    if (!nextMode) return;
+
+    event.preventDefault();
+    selectMode(nextMode);
+    (nextMode === "forecast" ? forecastTabRef : radarTabRef).current?.focus();
+  };
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if ((event.target as HTMLElement).closest("button, a, input")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -401,30 +422,33 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const busy = mode === "forecast" && (state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid));
 
   return (
-    <Card title="48-hour forecast map" icon={MapIcon} className="mt-4" data-testid="forecast-map-card">
+    <Card title={mode === "forecast" ? "48-hour forecast map" : "Radar observations map"} icon={MapIcon} className="mt-4" data-testid="forecast-map-card">
       <div className="mb-3 flex gap-1" role="tablist" aria-label="Weather map mode">
         <button
+          ref={forecastTabRef}
           id="forecast-map-tab"
           type="button"
           role="tab"
           aria-selected={mode === "forecast"}
           aria-controls="forecast-map-mode-panel"
+          tabIndex={mode === "forecast" ? 0 : -1}
           className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "forecast" ? "bg-white/25" : ""}`}
-          onClick={() => setMode("forecast")}
+          onClick={() => selectMode("forecast")}
+          onKeyDown={(event) => onModeTabKeyDown(event, "forecast")}
         >
           <MapIcon size={14} aria-hidden="true" /> Forecast fields
         </button>
         <button
+          ref={radarTabRef}
           id="radar-map-tab"
           type="button"
           role="tab"
           aria-selected={mode === "radar"}
           aria-controls="radar-map-mode-panel"
+          tabIndex={mode === "radar" ? 0 : -1}
           className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "radar" ? "bg-white/25" : ""}`}
-          onClick={() => {
-            setRadarRequested(true);
-            setMode("radar");
-          }}
+          onClick={() => selectMode("radar")}
+          onKeyDown={(event) => onModeTabKeyDown(event, "radar")}
         >
           <CloudRain size={14} aria-hidden="true" /> Radar observations
         </button>

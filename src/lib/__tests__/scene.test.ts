@@ -39,6 +39,25 @@ describe("weather scene", () => {
     expect(deriveWeatherScene(current({ code: 65, precipRateMmH: 0 })).intensity).toBe("heavy");
   });
 
+  it("makes rain streaks longer, faster, and more opaque as intensity rises", () => {
+    const scenes = [0.2, 1.2, 4, 12].map((precipRateMmH) =>
+      deriveWeatherScene(current({ code: 61, precipRateMmH }))
+    );
+    const particles = scenes.map((scene) => sceneParticles(scene, 12));
+
+    for (let id = 0; id < 12; id += 1) {
+      expect(particles.map((set) => set[id]!.size)).toEqual(
+        [...particles.map((set) => set[id]!.size)].sort((a, b) => a - b)
+      );
+      expect(particles.map((set) => set[id]!.opacity)).toEqual(
+        [...particles.map((set) => set[id]!.opacity)].sort((a, b) => a - b)
+      );
+      expect(particles.map((set) => set[id]!.duration)).toEqual(
+        [...particles.map((set) => set[id]!.duration)].sort((a, b) => b - a)
+      );
+    }
+  });
+
   it("generates stable bounded particle geometry", () => {
     const scene = deriveWeatherScene(current({ code: 65, precipRateMmH: 9, isDay: false }));
     const first = sceneParticles(scene, 200);
@@ -49,10 +68,10 @@ describe("weather scene", () => {
       id: 0,
       left: 26.75,
       top: 22.74,
-      size: 33.71,
-      duration: 0.83,
+      size: 43.82,
+      duration: 0.6,
       delay: 1.74,
-      opacity: 0.32,
+      opacity: 0.4,
     });
   });
 });
