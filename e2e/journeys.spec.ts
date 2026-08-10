@@ -940,7 +940,7 @@ test("resets Rain today and refreshes point data at location-local midnight", as
 
   await page.route("**/api.open-meteo.com/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/v1/gfs")) return route.fulfill({ json: mapFixture(url) });
+    if (!url.searchParams.has("current")) return route.fulfill({ json: mapFixture(url) });
     pointRequests += 1;
     const afterMidnight = pointRequests > 1;
     if (afterMidnight) await refreshGate;

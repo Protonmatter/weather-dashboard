@@ -114,16 +114,20 @@ export default function App() {
   const [rainTodayIn, setRainTodayIn] = useState(data.rainTodayIn);
 
   useEffect(() => {
+    setRainTodayIn(data.rainTodayIn);
+  }, [data]);
+
+  useEffect(() => {
+    if (weather.busy) return;
     const { place, timezone } = data;
     const now = new Date();
-    setRainTodayIn(data.rainTodayIn);
     const nextMidnight = dateAtLocalTime(now, timezone, 0, 0, 1);
     const timer = window.setTimeout(() => {
       setRainTodayIn(0);
-      if (!weather.busy) void weather.load(place);
+      void weather.load(place);
     }, Math.max(50, nextMidnight.getTime() - now.getTime() + 50));
     return () => window.clearTimeout(timer);
-  }, [data.place, data.rainTodayIn, data.timezone, weather.busy, weather.load]);
+  }, [data.place, data.timezone, weather.busy, weather.load]);
 
   const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
 

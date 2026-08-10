@@ -63,8 +63,8 @@ regional daylight rules automatically.
 The offline Palo Alto sample uses `America/Los_Angeles`, anchors its hourly instants to
 whole hours in that timezone, and remains labelled as sample data. At the selected
 location's local midnight, the UI resets the prior-day Rain today value immediately and
-refreshes point data. A throttled background timer performs the same boundary action when
-the page resumes.
+requests uncached point data, preventing reuse of a pre-midnight response. A throttled
+background timer performs the same boundary action when the page resumes.
 
 ### 3.2 Current condition and precipitation
 

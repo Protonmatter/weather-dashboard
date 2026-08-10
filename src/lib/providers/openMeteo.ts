@@ -141,7 +141,7 @@ export async function fetchForecast(
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timeformat=unixtime&timezone=auto&forecast_days=10`;
 
-  const w = await fetchJson<ForecastResponse>(url, { signal, cacheTtlMs: 120_000 });
+  const w = await fetchJson<ForecastResponse>(url, { signal });
   return parseForecastResponse(w);
 }
 

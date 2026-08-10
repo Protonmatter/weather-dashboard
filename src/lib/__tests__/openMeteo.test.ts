@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetHttpState } from "../http";
 import {
+  fetchForecast,
   parseEnsembleResponse,
   parseForecastResponse,
   type ForecastResponse,
@@ -50,6 +52,24 @@ const response = () => ({
     sunset: [1_786_327_200],
     uv_index_max: [3],
   },
+});
+
+beforeEach(() => __resetHttpState());
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Open-Meteo point forecast freshness", () => {
+  it("does not reuse a point response across consecutive loads", async () => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify(response()), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await fetchForecast(37.4419, -122.143);
+    await fetchForecast(37.4419, -122.143);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("Open-Meteo point forecast parser", () => {

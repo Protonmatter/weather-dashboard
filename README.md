@@ -10,7 +10,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **Current conditions** — temperature, feels-like, daily high/low, condition summary
 - **Location-local clock** — a live, seconds-resolution wall clock in the selected place's
   IANA timezone. Daylight-saving changes follow the place, not the viewer's computer. At
-  local midnight, Rain today resets immediately and point data refreshes for the new day.
+  local midnight, Rain today resets immediately and fresh point data is requested for the
+  new day.
 - **Inspectable weather details** — humidity, daily peak UV, estimated rain since local
   midnight, next-24-hour ensemble rain, wind, visibility, and pressure sit directly above
   the map. Hover or keyboard focus opens a compact tooltip; click, tap, or Enter pins the
@@ -200,7 +201,9 @@ as valid blank coverage.
 
 "Rain today" sums Open-Meteo's 15-minute liquid rain and shower estimates through the current
 provider timestamp in the selected place's local calendar day. The 26-hour lookback covers
-DST-length days; snowfall is excluded. It is not a physical rain-gauge observation.
+DST-length days; snowfall is excluded. Point forecasts are not served from the short shared
+HTTP cache, so a local-midnight refresh cannot reuse a pre-midnight response. It is not a
+physical rain-gauge observation.
 "Next 24h precip" is the ensemble total-precipitation
 median, which can include snow water equivalent, and its expanded panel reports p10–p90; the
 two values intentionally answer different questions.

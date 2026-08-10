@@ -27,8 +27,10 @@ Open-Meteo is requested with `timezone=auto` and `timeformat=unixtime`. Provider
 are parsed as instants and every visible civil-time label is formatted with the returned IANA
 timezone. The wall clock updates once per second and follows daylight-saving transitions for
 the selected location independently of the viewer's system timezone. A timezone-aware
-boundary timer resets Rain today and refreshes point data at the selected location's local
-midnight; a throttled background timer performs the same action when the page resumes.
+boundary timer resets Rain today and requests uncached point data at the selected location's
+local midnight; a throttled background timer performs the same action when the page resumes.
+Point forecasts do not use the short shared HTTP cache, so this boundary request cannot reuse
+a pre-midnight response.
 
 Current precipitation is a provider interval amount. The scene classifier normalises it to
 millimetres per hour before selecting drizzle, light, moderate, or heavy effects. WMO weather
