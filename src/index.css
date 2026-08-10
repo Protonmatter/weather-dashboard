@@ -88,7 +88,8 @@ input::placeholder { color: rgba(255, 255, 255, 0.5); }
 :focus-visible { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 2px; border-radius: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rainlayer, .weather-particles { display: none; }
+  .rainlayer { display: none; }
+  .weather-particles > * { animation: none; }
   .scene-storm-flash { display: none; }
   .scene-stars i, .scene-clouds span, .scene-fog { animation: none; }
   .fadein { animation: none; }

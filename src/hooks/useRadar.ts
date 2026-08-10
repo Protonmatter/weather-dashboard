@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { initialMapLoadState, mapLoadReducer } from "../lib/map/state";
-import { radarRefreshDelayMs } from "../lib/radar/cache";
+import { radarRefreshTimerDelayMs } from "../lib/radar/cache";
 import { loadRadarSource, radarKey } from "../lib/radar/provider";
 import type { RadarSource } from "../lib/radar/types";
 import type { Place } from "../lib/types";
@@ -30,8 +30,8 @@ export function useRadar(place: Place, enabled: boolean) {
       .then((source) => {
         if (controller.signal.aborted || id !== requestId.current) return;
         dispatch({ type: "success", requestId: id, data: { key, source } });
-        const delay = radarRefreshDelayMs(source);
-        if (delay > 0 && source.provider !== "unavailable") {
+        const delay = radarRefreshTimerDelayMs(source);
+        if (delay !== null) {
           refreshTimer = window.setTimeout(() => {
             setRetryGeneration((value) => value + 1);
           }, delay);

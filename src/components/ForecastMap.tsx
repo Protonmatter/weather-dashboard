@@ -349,6 +349,11 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
     setMode(nextMode);
   };
 
+  const returnToForecast = (): void => {
+    selectMode("forecast");
+    forecastTabRef.current?.focus();
+  };
+
   const onModeTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: MapMode): void => {
     let nextMode: MapMode | null = null;
     if (event.key === "ArrowRight") nextMode = currentMode === "forecast" ? "radar" : "forecast";
@@ -663,7 +668,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         />
       )}
       {radarRequested && (
-        <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={() => selectMode("forecast")}>
+        <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={returnToForecast}>
           <Suspense fallback={(
             <div
               id="radar-map-mode-panel"

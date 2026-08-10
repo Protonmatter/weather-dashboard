@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RADAR_CATALOGUE_TTL_MS, radarRefreshTimerDelayMs } from "../cache";
 import { noaaCatalogueUrl, noaaImageLayers, noaaImageUrl, parseNoaaFrames } from "../noaa";
 import { radarProviderFor } from "../provider";
 import { parseRainViewer, rainViewerTileUrl } from "../rainViewer";
@@ -15,6 +16,15 @@ const place = (cc: string): Place => ({
 });
 
 describe("radar provider boundary", () => {
+  it("schedules an immediate refresh for an already-expired catalogue", () => {
+    expect(radarRefreshTimerDelayMs({ provider: "noaa-mrms", fetchedAt: 1_000 }, 121_000)).toBe(0);
+    expect(radarRefreshTimerDelayMs({ provider: "unavailable", fetchedAt: 1_000 }, 121_000)).toBeNull();
+    expect(radarRefreshTimerDelayMs({ provider: "noaa-mrms", fetchedAt: 2_000 }, 1_000))
+      .toBe(RADAR_CATALOGUE_TTL_MS);
+    expect(radarRefreshTimerDelayMs({ provider: "noaa-mrms", fetchedAt: Number.NaN }, 1_000))
+      .toBeNull();
+  });
+
   it("selects NOAA for the US and RainViewer elsewhere", () => {
     expect(radarProviderFor(place("US"))).toBe("noaa-mrms");
     expect(radarProviderFor(place("pr"))).toBe("noaa-mrms");

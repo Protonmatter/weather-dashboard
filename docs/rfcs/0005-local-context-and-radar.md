@@ -65,8 +65,8 @@ modes does not reinterpret forecast hours as observation frames.
 
 Animation stops when reduced motion is requested, when the map is offscreen, or when the page
 is hidden. Manual sliders remain available. Reduced motion also disables star, cloud, and fog
-animations. Background particles are deterministic and bounded; no random particle churn
-occurs during React renders.
+animations while retaining static rain or snow marks. Background particles are deterministic
+and bounded; no random particle churn occurs during React renders.
 
 ## 4. Radar lifecycle and safety
 
@@ -74,7 +74,8 @@ Radar provider code is split into a second lazy chunk. Neither metadata endpoint
 until the user first selects Radar. Requests use the common abort, timeout, transient retry,
 circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
 revalidation when that freshness window expires. Cache hits preserve the original network
-acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely.
+acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely;
+an already-expired cache hit schedules immediate revalidation.
 The bounded NOAA catalogue query orders valid times newest-first before applying its
 1,000-record cap; parsed frames are restored to chronological playback order.
 When Forecast is active, the last complete radar layer remains in memory but no candidate
@@ -102,8 +103,9 @@ loads. A pan, zoom, or resize removes a prior-viewport layer if its replacement 
 ## 5. Failure and verification
 
 Provider and lazy radar-chunk failures stay inside radar mode and expose touch-sized recovery
-without unmounting the forecast map or dashboard. Location changes abort superseded metadata
-requests and generation guards prevent late responses from replacing the current place.
+without unmounting the forecast map or dashboard. Returning from a failed radar panel restores
+focus to the Forecast tab. Location changes abort superseded metadata requests and generation
+guards prevent late responses from replacing the current place.
 
 Deterministic tests cover timezone/DST formatting, Open-Meteo schema parsing, local-day
 accumulation, scene classification, provider selection, NOAA frame de-duplication, RainViewer

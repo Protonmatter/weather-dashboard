@@ -11,3 +11,13 @@ export function radarRefreshDelayMs(
   if (!Number.isFinite(age) || age < 0) return 0;
   return Math.max(0, RADAR_CATALOGUE_TTL_MS - age);
 }
+
+/** Null disables refresh; zero is a valid immediate revalidation delay. */
+export function radarRefreshTimerDelayMs(
+  source: Pick<RadarSource, "fetchedAt" | "provider">,
+  now = Date.now()
+): number | null {
+  if (source.provider === "unavailable" || !Number.isFinite(source.fetchedAt)) return null;
+  if (source.fetchedAt > now) return RADAR_CATALOGUE_TTL_MS;
+  return radarRefreshDelayMs(source, now);
+}

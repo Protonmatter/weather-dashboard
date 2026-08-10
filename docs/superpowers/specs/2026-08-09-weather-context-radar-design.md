@@ -206,7 +206,8 @@ attribution remain shared. Switching modes does not recenter or refetch the poin
 
 Forecast and radar each retain their own active frame. A radar provider refresh may update
 the available frame catalogue, but playback and scrubbing never request point weather or
-forecast-grid data.
+forecast-grid data. Cache acquisition time controls the refresh boundary, and an expired
+catalogue schedules immediate revalidation even when its cached promise settles at the TTL.
 
 ## 5. Data Flow
 
@@ -232,7 +233,8 @@ Radar payloads never enter the verification archive or local storage.
   channels.
 - Invalid timezone or required forecast schema is a provider-boundary failure, never a
   silent browser-time fallback.
-- A radar metadata failure produces a retry action and keeps Forecast mode operational.
+- A radar metadata failure produces a retry action and keeps Forecast mode operational; lazy
+  radar recovery returns keyboard focus to the Forecast tab.
 - A failed radar refresh may retain only imagery for the same viewport/frame and labels it
   stale. It never paints an old viewport as current.
 - Tile/image errors expose no request URL, coordinate, or internal provider response.
@@ -272,7 +274,8 @@ migration or backend rollback is required.
 - Tooltip preview works with hover and focus.
 - Click/tap/Enter pins details; Escape closes them.
 - Mobile exposes all metric details without hover and has no horizontal overflow.
-- Rain intensity changes with fixture precipitation while reduced motion stays static.
+- Rain intensity changes with fixture precipitation while reduced motion retains static
+  precipitation marks.
 - Forecast and Radar preserve independent timelines and shared viewport.
 - Radar playback does not refetch point weather or the forecast grid.
 - NOAA, RainViewer, unavailable-coverage, and provider-failure paths render truthful

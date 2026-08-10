@@ -271,9 +271,12 @@ test("contains a failed lazy radar chunk within radar mode", async ({ page }) =>
 
   await expect(page.getByTestId("radar-panel-error")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("forecast-map-error")).toHaveCount(0);
-  await page.getByRole("button", { name: "Return to forecast" }).click();
+  const recovery = page.getByRole("button", { name: "Return to forecast" });
+  await recovery.focus();
+  await recovery.press("Enter");
   await expect(page.getByTestId("forecast-map-time")).toBeVisible();
   await expect(page.getByRole("heading", { name: "48-hour forecast map" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Forecast fields" })).toBeFocused();
 });
 
 test("surfaces the ensemble precipitation panel with quantiles", async ({ page }) => {
@@ -602,6 +605,10 @@ test("labels retained radar imagery with its loaded frame time", async ({ page }
 test("disables all continuous backdrop motion when reduced motion is enabled", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+
+  const staticPrecipitation = page.locator(".weather-particles .rainstreak").first();
+  await expect(staticPrecipitation).toBeVisible();
+  await expect(staticPrecipitation).toHaveCSS("animation-name", "none");
 
   const animationNames = await page.evaluate(() => {
     const fixture = document.createElement("div");
