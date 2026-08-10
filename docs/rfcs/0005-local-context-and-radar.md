@@ -34,10 +34,10 @@ codes provide a fallback when the interval amount is absent or zero.
 
 The metric strip deliberately separates:
 
-- **Rain today:** sum of Open-Meteo hourly liquid rain and shower estimates through the
-  current provider timestamp within the location's local calendar day; snowfall is excluded.
-  Hour-ending totals at exactly local midnight belong to the preceding day. This is not a
-  rain gauge.
+- **Rain today:** sum of Open-Meteo 15-minute liquid rain and shower estimates through the
+  current provider timestamp within the location's local calendar day. A 26-hour lookback
+  covers DST-length days; snowfall and future intervals are excluded. Intervals ending
+  exactly at local midnight belong to the preceding day. This is not a rain gauge.
 - **Next 24h precip:** live total-precipitation ensemble accumulation, including snow water
   equivalent when applicable, includes p10–p90 and member count. When the ensemble provider
   is unavailable, the deterministic fallback is labelled as a modeled estimate and never

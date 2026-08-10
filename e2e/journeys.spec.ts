@@ -32,8 +32,11 @@ const forecastFixture = {
     // fetch threw on an absent array inside Promise.allSettled and reconciliation was
     // silently unexercisable in e2e.
     precipitation: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
-    rain: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
-    showers: Array.from({ length: 48 }, () => 0),
+  },
+  minutely_15: {
+    time: Array.from({ length: 105 }, (_, i) => fixtureNow - (104 - i) * 900),
+    rain: Array.from({ length: 105 }, (_, i) => (i % 20 === 0 ? 0.01 : 0)),
+    showers: Array.from({ length: 105 }, () => 0),
   },
   daily: {
     time: Array.from({ length: 10 }, (_, i) => fixtureNow - (fixtureNow % 86400) + i * 86400),

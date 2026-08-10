@@ -197,9 +197,10 @@ layer can mean either no precipitation or no provider coverage; the UI says so r
 claiming a clear sky. Image delivery failures are reported separately and are never described
 as valid blank coverage.
 
-"Rain today" sums Open-Meteo's hourly liquid rain and shower estimates through the current
-provider timestamp in the selected place's local calendar day; snowfall is excluded. It is
-not a physical rain-gauge observation. "Next 24h precip" is the ensemble total-precipitation
+"Rain today" sums Open-Meteo's 15-minute liquid rain and shower estimates through the current
+provider timestamp in the selected place's local calendar day. The 26-hour lookback covers
+DST-length days; snowfall is excluded. It is not a physical rain-gauge observation.
+"Next 24h precip" is the ensemble total-precipitation
 median, which can include snow water equivalent, and its expanded panel reports p10–p90; the
 two values intentionally answer different questions.
 

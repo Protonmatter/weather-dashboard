@@ -68,10 +68,12 @@ data.
 ### 3.2 Current condition and precipitation
 
 The Open-Meteo point request adds current precipitation, rain, showers, snowfall, cloud
-cover, and the provider interval, plus hourly precipitation, rain, and showers. Canonical
+cover, and the provider interval, plus hourly precipitation and 15-minute rain and shower
+intervals with a 26-hour lookback. Canonical
 precipitation is stored in inches to match the existing ensemble summary; scene-rate
 calculations convert from the returned interval total to millimetres per hour before
-classifying visual intensity. The Rain today metric sums only hourly liquid rain and showers.
+classifying visual intensity. The Rain today metric sums only elapsed 15-minute liquid rain
+and shower intervals on the location-local day.
 
 The weather bundle exposes:
 

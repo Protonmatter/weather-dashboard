@@ -140,8 +140,8 @@ export function localDateKey(date: Date, timeZone: string): string {
 Add a point response fixture with `timezone`, `timezone_abbreviation`,
 `utc_offset_seconds`, `current.time`, `current.interval`, `current.precipitation`,
 `current.rain`, `current.showers`, `current.snowfall`, `current.cloud_cover`, and hourly
-`precipitation`. Assert invalid timezones and nonnumeric required series fail rather than
-silently default.
+`precipitation`, plus 15-minute `rain` and `showers`. Assert invalid timezones and nonnumeric
+required series fail rather than silently default.
 
 - [ ] **Step 5: Run the focused provider and time tests to observe contract failures**
 
@@ -152,7 +152,8 @@ Expected: time helper tests PASS; updated provider expectations FAIL.
 - [ ] **Step 6: Implement the minimal typed point-provider changes**
 
 Request `timeformat=unixtime`, current precipitation/rain/showers/snowfall/cloud cover,
-hourly precipitation, and `precipitation_unit=inch`. Parse all Unix seconds with:
+hourly precipitation, 15-minute rain/showers with a 26-hour lookback, and
+`precipitation_unit=inch`. Parse all Unix seconds with:
 
 ```ts
 const instant = (seconds: number, label: string): Date => {
@@ -166,8 +167,8 @@ const precipRateMmH = current.interval > 0
   : 0;
 ```
 
-Compute `rainTodayIn` from hourly precipitation entries whose location calendar key matches
-`localDateKey(updatedAt, timezone)` and whose instant is not later than `updatedAt`.
+Compute `rainTodayIn` from 15-minute liquid rain and shower intervals whose location calendar
+key matches `localDateKey(updatedAt, timezone)` and whose instant is not later than `updatedAt`.
 
 - [ ] **Step 7: Update fallback and all formatter call sites enough to typecheck**
 

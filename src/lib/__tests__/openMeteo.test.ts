@@ -36,6 +36,11 @@ const response = () => ({
     is_day: [1, 1, 1],
     visibility: [12_000, 13_000, 16_000],
   },
+  minutely_15: {
+    time: [1_786_288_500, 1_786_289_400, 1_786_290_300, 1_786_291_200],
+    rain: [0.05, 0.05, 0.05, 0.05],
+    showers: [0.025, 0.025, 0.025, 0.025],
+  },
   daily: {
     time: [1_786_258_800],
     weather_code: [63],
@@ -75,13 +80,12 @@ describe("Open-Meteo point forecast parser", () => {
   it("attributes a midnight-ending precipitation interval to the previous local day", () => {
     const midnight = Date.parse("2026-08-10T07:00:00Z") / 1000;
     const fixture = response();
-    fixture.current.time = midnight + 5_400;
-    fixture.hourly.time = [midnight - 3_600, midnight, midnight + 3_600];
-    fixture.hourly.precipitation = [0.1, 0.2, 0.3];
-    fixture.hourly.rain = [0.1, 0.2, 0.3];
-    fixture.hourly.showers = [0, 0, 0];
+    fixture.current.time = midnight + 900;
+    fixture.minutely_15.time = [midnight, midnight + 900, midnight + 1_800];
+    fixture.minutely_15.rain = [0.2, 0.3, 0.4];
+    fixture.minutely_15.showers = [0, 0, 0];
 
-    const parsed = parseForecastResponse(fixture, (midnight + 5_400) * 1000);
+    const parsed = parseForecastResponse(fixture, (midnight + 900) * 1000);
 
     expect(parsed.rainTodayIn).toBeCloseTo(0.3, 8);
   });
@@ -89,12 +93,29 @@ describe("Open-Meteo point forecast parser", () => {
   it("does not count snow-only precipitation as rain today", () => {
     const fixture = response();
     fixture.hourly.precipitation = [0.4, 0.5, 0.7];
-    fixture.hourly.rain = [0, 0, 0];
-    fixture.hourly.showers = [0, 0, 0];
+    fixture.minutely_15.rain = [0, 0, 0, 0];
+    fixture.minutely_15.showers = [0, 0, 0, 0];
 
     const parsed = parseForecastResponse(fixture, 1_786_291_200_000);
 
     expect(parsed.rainTodayIn).toBe(0);
+  });
+
+  it("includes elapsed liquid intervals inside the current partial hour", () => {
+    const fixture = response();
+    fixture.current.time = 1_786_293_000;
+    fixture.minutely_15.time = [
+      1_786_291_200,
+      1_786_292_100,
+      1_786_293_000,
+      1_786_293_900,
+    ];
+    fixture.minutely_15.rain = [0.02, 0.04, 0.06, 1];
+    fixture.minutely_15.showers = [0.01, 0.01, 0.01, 1];
+
+    const parsed = parseForecastResponse(fixture, 1_786_293_000_000);
+
+    expect(parsed.rainTodayIn).toBeCloseTo(0.15, 8);
   });
 
   it("fails closed on an invalid provider timezone", () => {

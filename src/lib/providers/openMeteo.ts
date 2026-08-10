@@ -18,10 +18,13 @@ export interface ForecastResponse {
     weather_code: number[];
     precipitation_probability?: (number | null)[];
     precipitation: (number | null)[];
-    rain: (number | null)[];
-    showers: (number | null)[];
     is_day: number[];
     visibility?: (number | null)[];
+  };
+  minutely_15: {
+    time: number[];
+    rain: (number | null)[];
+    showers: (number | null)[];
   };
   daily: {
     time: number[];
@@ -42,7 +45,7 @@ export interface ForecastBundle {
   timezoneAbbreviation: string;
   utcOffsetSeconds: number;
   updatedAt: Date;
-  /** Liquid rain plus showers through the current local-day provider timestamp, inches. */
+  /** 15-minute liquid rain plus showers through the current local-day provider timestamp, inches. */
   rainTodayIn: number;
 }
 
@@ -111,11 +114,11 @@ export function parseForecastResponse(w: ForecastResponse, nowMs = Date.now()): 
   };
 
   const today = localDateKey(updatedAt, timezone);
-  const rainTodayIn = w.hourly.time.reduce((total, seconds, i) => {
-    const time = instant(seconds, "hourly time");
+  const rainTodayIn = w.minutely_15.time.reduce((total, seconds, i) => {
+    const time = instant(seconds, "15-minute time");
     const intervalDay = time ? localDateKey(new Date(time.getTime() - 1), timezone) : "";
     return time && time <= updatedAt && intervalDay === today
-      ? total + (w.hourly.rain[i] ?? 0) + (w.hourly.showers[i] ?? 0)
+      ? total + (w.minutely_15.rain[i] ?? 0) + (w.minutely_15.showers[i] ?? 0)
       : total;
   }, 0);
 
@@ -139,7 +142,8 @@ export async function fetchForecast(
   const url =
     `${FORECAST}?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure,precipitation,rain,showers,snowfall,cloud_cover` +
-    `&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,rain,showers,is_day,visibility` +
+    `&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,is_day,visibility` +
+    `&minutely_15=rain,showers&past_minutely_15=104&forecast_minutely_15=1` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timeformat=unixtime&timezone=auto&forecast_days=10`;
 
