@@ -57,8 +57,6 @@ describe("Open-Meteo point forecast parser", () => {
     const parsed = parseForecastResponse(response(), 1_786_291_200_000);
 
     expect(parsed.timezone).toBe("America/Los_Angeles");
-    expect(parsed.timezoneAbbreviation).toBe("PDT");
-    expect(parsed.utcOffsetSeconds).toBe(-25_200);
     expect(parsed.updatedAt.toISOString()).toBe("2026-08-09T16:00:00.000Z");
     expect(parsed.current.precipitationIn).toBe(0.04);
     expect(parsed.current.precipRateMmH).toBeCloseTo(4.064, 3);
@@ -88,6 +86,19 @@ describe("Open-Meteo point forecast parser", () => {
     const parsed = parseForecastResponse(fixture, (midnight + 900) * 1000);
 
     expect(parsed.rainTodayIn).toBeCloseTo(0.3, 8);
+  });
+
+  it("returns zero when provider data is still from the prior local day", () => {
+    const midnight = Date.parse("2026-08-10T07:00:00Z") / 1000;
+    const fixture = response();
+    fixture.current.time = midnight - 900;
+    fixture.minutely_15.time = [midnight - 1_800, midnight - 900];
+    fixture.minutely_15.rain = [0.2, 0.3];
+    fixture.minutely_15.showers = [0, 0];
+
+    const parsed = parseForecastResponse(fixture, (midnight + 60) * 1000);
+
+    expect(parsed.rainTodayIn).toBe(0);
   });
 
   it("does not count snow-only precipitation as rain today", () => {

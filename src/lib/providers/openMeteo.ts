@@ -9,8 +9,6 @@ const ENSEMBLE = "https://ensemble-api.open-meteo.com/v1/ensemble";
 
 export interface ForecastResponse {
   timezone: string;
-  timezone_abbreviation: string;
-  utc_offset_seconds: number;
   current: Record<string, number>;
   hourly: {
     time: number[];
@@ -42,8 +40,6 @@ export interface ForecastBundle {
   hourly: HourPoint[];
   daily: DayPoint[];
   timezone: string;
-  timezoneAbbreviation: string;
-  utcOffsetSeconds: number;
   updatedAt: Date;
   /** 15-minute liquid rain plus showers through the current local-day provider timestamp, inches. */
   rainTodayIn: number;
@@ -113,7 +109,7 @@ export function parseForecastResponse(w: ForecastResponse, nowMs = Date.now()): 
     cloudCover: Math.round(w.current.cloud_cover ?? 0),
   };
 
-  const today = localDateKey(updatedAt, timezone);
+  const today = localDateKey(new Date(nowMs), timezone);
   const rainTodayIn = w.minutely_15.time.reduce((total, seconds, i) => {
     const time = instant(seconds, "15-minute time");
     const intervalDay = time ? localDateKey(new Date(time.getTime() - 1), timezone) : "";
@@ -127,8 +123,6 @@ export function parseForecastResponse(w: ForecastResponse, nowMs = Date.now()): 
     hourly,
     daily,
     timezone,
-    timezoneAbbreviation: w.timezone_abbreviation || timezone,
-    utcOffsetSeconds: w.utc_offset_seconds,
     updatedAt,
     rainTodayIn,
   };

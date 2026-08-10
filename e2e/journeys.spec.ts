@@ -929,6 +929,50 @@ test("degrades to a labelled sample forecast when providers fail", async ({ page
   await expect(page.getByText(/Sample forecast/)).toBeVisible({ timeout: 15000 });
 });
 
+test("resets Rain today and refreshes point data at location-local midnight", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-08-10T06:59:58Z") });
+  await page.unroute("**/api.open-meteo.com/**");
+  let pointRequests = 0;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+
+  await page.route("**/api.open-meteo.com/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/v1/gfs")) return route.fulfill({ json: mapFixture(url) });
+    pointRequests += 1;
+    const afterMidnight = pointRequests > 1;
+    if (afterMidnight) await refreshGate;
+    const currentTime = Date.parse(afterMidnight
+      ? "2026-08-10T07:00:00Z"
+      : "2026-08-10T06:45:00Z") / 1000;
+    return route.fulfill({
+      json: {
+        ...forecastFixture,
+        current: { ...forecastFixture.current, time: currentTime },
+        minutely_15: {
+          time: afterMidnight ? [currentTime] : [currentTime - 900, currentTime],
+          rain: afterMidnight ? [0] : [0.2, 0.3],
+          showers: afterMidnight ? [0] : [0, 0],
+        },
+      },
+    });
+  });
+
+  try {
+    await page.goto("/");
+    const rainToday = page.getByTestId("weather-metric-rain-today");
+    await expect(rainToday).toHaveAttribute("aria-label", "Rain today: 0.50 in");
+
+    await page.clock.runFor(2_200);
+    await expect.poll(() => pointRequests).toBe(2);
+    await expect(rainToday).toHaveAttribute("aria-label", "Rain today: 0.00 in");
+  } finally {
+    releaseRefresh();
+  }
+});
+
 test("archives each live forecast with temperature members", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

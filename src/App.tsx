@@ -25,6 +25,7 @@ import { decodeWMO } from "./lib/wmo";
 import { f2c, fmtClock } from "./lib/units";
 import { isAbort } from "./lib/http";
 import { deriveWeatherScene } from "./lib/scene";
+import { dateAtLocalTime } from "./lib/time";
 import type { Place, WeatherBundle } from "./lib/types";
 
 const ForecastMap = lazy(() => import("./components/ForecastMap"));
@@ -109,6 +110,20 @@ export default function App() {
     []
   );
   const weather = useWeatherLoader<WeatherBundle>(fallbackBundle(), loader);
+  const data = weather.data;
+  const [rainTodayIn, setRainTodayIn] = useState(data.rainTodayIn);
+
+  useEffect(() => {
+    const { place, timezone } = data;
+    const now = new Date();
+    setRainTodayIn(data.rainTodayIn);
+    const nextMidnight = dateAtLocalTime(now, timezone, 0, 0, 1);
+    const timer = window.setTimeout(() => {
+      setRainTodayIn(0);
+      if (!weather.busy) void weather.load(place);
+    }, Math.max(50, nextMidnight.getTime() - now.getTime() + 50));
+    return () => window.clearTimeout(timer);
+  }, [data.place, data.rainTodayIn, data.timezone, weather.busy, weather.load]);
 
   const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
 
@@ -190,7 +205,6 @@ export default function App() {
     cinema: { max: 1760, main: "minmax(360px, 1fr) minmax(0, 2fr)", side: "repeat(auto-fit, minmax(260px, 1fr))", pad: "px-10 py-10", gap: "gap-5" },
   }[target];
 
-  const data = weather.data;
   const { current, hourly, daily, place, aqi, ensemble } = data;
   const cond = decodeWMO(current.code, current.isDay);
   const scene = deriveWeatherScene(current);
@@ -243,7 +257,7 @@ export default function App() {
         <WeatherMetrics
           current={current}
           uv={today?.uv ?? 0}
-          rainTodayIn={data.rainTodayIn}
+          rainTodayIn={rainTodayIn}
           ensemble={ensemble}
           placeKey={`${place.lat}:${place.lon}`}
         />

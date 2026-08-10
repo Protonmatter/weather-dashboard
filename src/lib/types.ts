@@ -100,8 +100,6 @@ export interface WeatherBundle {
   ensemble: EnsembleSummary;
   live: boolean;
   timezone: string;
-  timezoneAbbreviation: string;
-  utcOffsetSeconds: number;
   updatedAt: Date;
   /** Estimated model/analysis liquid rain plus showers since local midnight, inches. */
   rainTodayIn: number;

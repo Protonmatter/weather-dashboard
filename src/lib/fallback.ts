@@ -18,9 +18,8 @@ const DAY_ROWS: ReadonlyArray<readonly [number, number, number]> = [
  */
 export function fallbackBundle(): WeatherBundle {
   const now = new Date();
-  const base = new Date(now);
-  base.setMinutes(0, 0, 0);
   const currentHour = hourInTimeZone(now, FALLBACK_TIMEZONE);
+  const base = dateAtLocalTime(now, FALLBACK_TIMEZONE, currentHour, 0);
 
   const hourly = HOUR_TEMPS.map((temp, i) => {
     const time = new Date(base.getTime() + i * 3600e3);
@@ -69,8 +68,6 @@ export function fallbackBundle(): WeatherBundle {
     ensemble: { ...ensembleStats(synthMembers(HOUR_POP)), source: "modeled spread", live: false },
     live: false,
     timezone: FALLBACK_TIMEZONE,
-    timezoneAbbreviation: "PST/PDT",
-    utcOffsetSeconds: -28_800,
     updatedAt: now,
     rainTodayIn: 0.09,
   };

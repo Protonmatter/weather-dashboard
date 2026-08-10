@@ -28,4 +28,21 @@ describe("fallback forecast timezone", () => {
     expect(bundle.hourly[0]!.isDay).toBe(false);
     expect(bundle.hourly[2]!.isDay).toBe(true);
   });
+
+  it("anchors fallback hours in the declared timezone for fractional-offset viewers", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:30:00Z"));
+    const originalTimeZone = process.env["TZ"];
+    process.env["TZ"] = "Asia/Kolkata";
+
+    try {
+      const bundle = fallbackBundle();
+
+      expect(formatLocalTime(bundle.hourly[0]!.time, bundle.timezone)).toBe("5:00 AM");
+      expect(formatLocalTime(bundle.hourly[1]!.time, bundle.timezone)).toBe("6:00 AM");
+    } finally {
+      if (originalTimeZone === undefined) delete process.env["TZ"];
+      else process.env["TZ"] = originalTimeZone;
+    }
+  });
 });

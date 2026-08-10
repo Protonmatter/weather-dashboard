@@ -26,7 +26,9 @@ Radar source selection is explicit and deterministic:
 Open-Meteo is requested with `timezone=auto` and `timeformat=unixtime`. Provider timestamps
 are parsed as instants and every visible civil-time label is formatted with the returned IANA
 timezone. The wall clock updates once per second and follows daylight-saving transitions for
-the selected location independently of the viewer's system timezone.
+the selected location independently of the viewer's system timezone. A timezone-aware
+boundary timer resets Rain today and refreshes point data at the selected location's local
+midnight; a throttled background timer performs the same action when the page resumes.
 
 Current precipitation is a provider interval amount. The scene classifier normalises it to
 millimetres per hour before selecting drizzle, light, moderate, or heavy effects. WMO weather

@@ -53,8 +53,6 @@ an instant instead of being parsed in the browser's timezone.
 The weather bundle carries:
 
 - `timezone`: validated IANA identifier;
-- `timezoneAbbreviation`: provider label when valid, otherwise derived for display;
-- `utcOffsetSeconds`: retained for provider daily-calendar decoding;
 - `updatedAt`: the current-condition validity instant.
 
 All visible formatting accepts the location timezone explicitly. Calendar-day grouping
@@ -62,8 +60,11 @@ uses a timezone-aware `YYYY-MM-DD` key, not `Date.toDateString()`. The wall cloc
 `Intl.DateTimeFormat` and therefore changes between PST/PDT, EST/EDT, and equivalent
 regional daylight rules automatically.
 
-The offline Palo Alto sample uses `America/Los_Angeles` and remains labelled as sample
-data.
+The offline Palo Alto sample uses `America/Los_Angeles`, anchors its hourly instants to
+whole hours in that timezone, and remains labelled as sample data. At the selected
+location's local midnight, the UI resets the prior-day Rain today value immediately and
+refreshes point data. A throttled background timer performs the same boundary action when
+the page resumes.
 
 ### 3.2 Current condition and precipitation
 

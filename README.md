@@ -9,7 +9,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 
 - **Current conditions** — temperature, feels-like, daily high/low, condition summary
 - **Location-local clock** — a live, seconds-resolution wall clock in the selected place's
-  IANA timezone. Daylight-saving changes follow the place, not the viewer's computer.
+  IANA timezone. Daylight-saving changes follow the place, not the viewer's computer. At
+  local midnight, Rain today resets immediately and point data refreshes for the new day.
 - **Inspectable weather details** — humidity, daily peak UV, estimated rain since local
   midnight, next-24-hour ensemble rain, wind, visibility, and pressure sit directly above
   the map. Hover or keyboard focus opens a compact tooltip; click, tap, or Enter pins the
