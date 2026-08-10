@@ -34,8 +34,10 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   losing pan, zoom, or the selected-place marker. U.S. and territory locations use NOAA/NWS
   MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
   calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
-  two minutes from its original network acquisition time. Radar chunk failures stay inside
-  radar mode; wide maps enforce a one-world minimum zoom, and imagery failures retain the
+  two minutes from its original network acquisition time. While Forecast is active, the last
+  complete radar layer is retained but replacement imagery is not requested until Radar is
+  selected again. Radar chunk failures stay inside radar mode; wide maps enforce a one-world
+  minimum zoom, and imagery failures retain the
   last complete layer only for the same viewport, with its matching observation time, and
   expose an explicit retry.
   Both timelines are independently

@@ -388,6 +388,32 @@ test("loads NOAA MRMS only when the U.S. radar mode is selected", async ({ page 
   await expect(page.getByTestId("radar-time")).toBeHidden();
 });
 
+test("does not load hidden radar imagery while Forecast mode is active", async ({ page }) => {
+  let radarImageRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage")) {
+      radarImageRequests += 1;
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1, { timeout: 15_000 });
+  const loadedRequests = radarImageRequests;
+
+  await page.getByRole("tab", { name: "Forecast fields" }).click();
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await page.waitForTimeout(500);
+  expect(radarImageRequests).toBe(loadedRequests);
+
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect.poll(() => radarImageRequests).toBeGreaterThan(loadedRequests);
+});
+
 test("uses RainViewer outside the U.S. and keeps location-local time", async ({ page }) => {
   let rainViewerRequests = 0;
   page.on("request", (request) => {

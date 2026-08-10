@@ -213,7 +213,8 @@ forecast-grid data.
 6. Selecting Radar chooses NOAA MRMS or RainViewer from the normalized location, fetches
    bounded frame metadata, and renders only the active frame over shared base tiles.
 7. Panning or zooming settles before any provider-specific radar imagery request is
-   replaced.
+   replaced. Forecast mode retains the last complete radar layer but does not request a
+   candidate replacement until Radar becomes active again.
 8. Superseded radar metadata and imagery are aborted or ignored by a request generation.
 
 Radar payloads never enter the verification archive or local storage.

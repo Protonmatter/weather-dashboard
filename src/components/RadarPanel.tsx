@@ -152,6 +152,7 @@ export default function RadarPanel({
     <div className="absolute inset-0 z-10 pointer-events-none" hidden={!active} data-testid="radar-overlay">
       {radarImages.length > 0 && (
         <RadarImageLayer
+          active={active}
           contextKey={imageContextKey}
           requestKey={imageRequestKey}
           retryGeneration={imageRetryGeneration}

@@ -22,6 +22,7 @@ interface LoadProgress {
 }
 
 interface RadarImageLayerProps {
+  active: boolean;
   contextKey: string;
   requestKey: string;
   retryGeneration: number;
@@ -32,6 +33,7 @@ interface RadarImageLayerProps {
 
 /** Swaps a complete radar layer atomically and retains the prior successful layer on failure. */
 export function RadarImageLayer({
+  active,
   contextKey,
   requestKey,
   retryGeneration,
@@ -44,7 +46,7 @@ export function RadarImageLayer({
   const token = `${contextKey}:${requestKey}:${retryGeneration}`;
   const visibleLayer = loadedLayer?.contextKey === contextKey ? loadedLayer : null;
   const candidateLoaded = visibleLayer?.token === token;
-  const candidateComplete = progress.token === token && progress.keys.size === images.length;
+  const candidateComplete = active && progress.token === token && progress.keys.size === images.length;
 
   useEffect(() => {
     if (!candidateComplete || loadedLayer?.token === token) return;
@@ -78,8 +80,8 @@ export function RadarImageLayer({
 
   return (
     <>
-      {!candidateLoaded && visibleLayer?.images.map((image) => renderImage(image, "loaded", visibleLayer.token))}
-      {images.map((image) => renderImage(image, candidateLoaded ? "loaded" : "request", token))}
+      {(!active || !candidateLoaded) && visibleLayer?.images.map((image) => renderImage(image, "loaded", visibleLayer.token))}
+      {active && images.map((image) => renderImage(image, candidateLoaded ? "loaded" : "request", token))}
     </>
   );
 }

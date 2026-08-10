@@ -72,6 +72,8 @@ until the user first selects Radar. Requests use the common abort, timeout, tran
 circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
 revalidation when that freshness window expires. Cache hits preserve the original network
 acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely.
+When Forecast is active, the last complete radar layer remains in memory but no candidate
+imagery is requested; a current-viewport replacement begins only when Radar is selected again.
 
 NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box, a fixed
 frame time, transparency, and an image size capped at 4096 pixels per dimension. Viewport
