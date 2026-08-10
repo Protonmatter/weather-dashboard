@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Sun, Sunrise, Wind, Droplets, Eye, Gauge } from "lucide-react";
+import { Sun, Sunrise, Wind } from "lucide-react";
 import { Card, Scale } from "./Card";
 import { decodeWMO } from "../lib/wmo";
-import { aqiBand, uvLabel, fmtHour, fmtClock, tempColor, DAYS } from "../lib/units";
-import type { LucideIcon } from "lucide-react";
+import { aqiBand, uvLabel, fmtHour, fmtClock, tempColor } from "../lib/units";
+import { formatLocalWeekday, localDateKey } from "../lib/time";
 import type { CurrentConditions, DayPoint, HourPoint, TempQuantiles } from "../lib/types";
 
 type Convert = (f: number) => number;
@@ -101,10 +101,12 @@ export function HourlyStrip({
   hourly,
   T,
   spread,
+  timezone,
 }: {
   hourly: readonly HourPoint[];
   T: Convert;
   spread?: readonly TempQuantiles[];
+  timezone: string;
 }) {
   const hours = hourly.slice(0, 24);
 
@@ -140,7 +142,7 @@ export function HourlyStrip({
                       background: shown === i ? "rgba(255,255,255,0.09)" : "transparent",
                     }}
                     aria-pressed={pinned === i}
-                    aria-label={`Inspect ${i === 0 ? "now" : fmtHour(hp.time)}`}
+                    aria-label={`Inspect ${i === 0 ? "now" : fmtHour(hp.time, timezone)}`}
                     onPointerEnter={() => setPreview(i)}
                     onPointerLeave={() => setPreview(null)}
                     onFocus={() => setPreview(i)}
@@ -150,7 +152,7 @@ export function HourlyStrip({
                     }}
                   >
                     <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
-                      {i === 0 ? "Now" : fmtHour(hp.time)}
+                      {i === 0 ? "Now" : fmtHour(hp.time, timezone)}
                     </span>
                     <c.Icon size={19} strokeWidth={1.7} />
                     <span style={{ fontSize: 15, fontWeight: 500 }}>{T(hp.temp)}°</span>
@@ -166,7 +168,7 @@ export function HourlyStrip({
         {h ? (
           <p style={{ fontSize: 12, lineHeight: 1.4 }}>
             <span style={{ fontWeight: 600 }}>
-              {shown === 0 ? "Now" : fmtHour(h.time)}
+              {shown === 0 ? "Now" : fmtHour(h.time, timezone)}
             </span>
             <span style={{ color: "rgba(255,255,255,0.66)" }}>
               {" "}· {decodeWMO(h.code, h.isDay).label} · {T(h.temp)}° · {Math.round(h.pop)}% precip
@@ -187,18 +189,21 @@ export function HourlyStrip({
   );
 }
 
-const sameDay = (a: Date, b: Date): boolean => a.toDateString() === b.toDateString();
+const sameDay = (a: Date, b: Date, timezone: string): boolean =>
+  localDateKey(a, timezone) === localDateKey(b, timezone);
 
 export function TenDayForecast({
   daily,
   current,
   hourly,
   T,
+  timezone,
 }: {
   daily: readonly DayPoint[];
   current: CurrentConditions;
   hourly: readonly HourPoint[];
   T: Convert;
+  timezone: string;
 }) {
   const weekMin = Math.min(...daily.map((d) => d.low));
   const weekMax = Math.max(...daily.map((d) => d.high));
@@ -219,7 +224,7 @@ export function TenDayForecast({
           const nowPos =
             i === 0 ? ((Math.min(Math.max(current.temp, d.low), d.high) - d.low) / dayRange) * 100 : null;
           const open = expanded === i;
-          const dayHours = open ? hourly.filter((hp) => sameDay(hp.time, d.date)) : [];
+          const dayHours = open ? hourly.filter((hp) => sameDay(hp.time, d.date, timezone)) : [];
 
           return (
             <li
@@ -238,7 +243,7 @@ export function TenDayForecast({
                 }}
               >
                 <span style={{ width: 46, fontSize: 14, fontWeight: 500 }}>
-                  {i === 0 ? "Today" : DAYS[d.date.getDay()]}
+                  {i === 0 ? "Today" : formatLocalWeekday(d.date, timezone)}
                 </span>
                 <c.Icon size={17} strokeWidth={1.7} />
                 <span style={{ width: 30, textAlign: "right", fontSize: 14, color: "rgba(255,255,255,0.55)" }}>
@@ -288,7 +293,7 @@ export function TenDayForecast({
                               style={{ minWidth: 40 }}
                             >
                               <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 600 }}>
-                                {fmtHour(hp.time)}
+                                {fmtHour(hp.time, timezone)}
                               </span>
                               <hc.Icon size={15} strokeWidth={1.7} />
                               <span style={{ fontSize: 12.5, fontWeight: 500 }}>{T(hp.temp)}°</span>
@@ -307,8 +312,8 @@ export function TenDayForecast({
                   )}
                   <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
                     UV {Math.round(d.uv)} ({uvLabel(d.uv)})
-                    {d.sunrise && ` · Sunrise ${fmtClock(d.sunrise)}`}
-                    {d.sunset && ` · Sunset ${fmtClock(d.sunset)}`}
+                    {d.sunrise && ` · Sunrise ${fmtClock(d.sunrise, timezone)}`}
+                    {d.sunset && ` · Sunset ${fmtClock(d.sunset, timezone)}`}
                   </p>
                 </div>
               )}
@@ -379,7 +384,7 @@ export function UvCard({ uv }: { uv: number }) {
   );
 }
 
-export function SunsetCard({ day }: { day: DayPoint | undefined }) {
+export function SunsetCard({ day, timezone }: { day: DayPoint | undefined; timezone: string }) {
   const sunrise = day?.sunrise ?? null;
   const sunset = day?.sunset ?? null;
 
@@ -394,7 +399,7 @@ export function SunsetCard({ day }: { day: DayPoint | undefined }) {
 
   return (
     <Card title="Sunset" icon={Sunrise} className="fadein">
-      <div style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.1 }}>{sunset ? fmtClock(sunset) : "—"}</div>
+      <div style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.1 }}>{sunset ? fmtClock(sunset, timezone) : "—"}</div>
       <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.62)" }}>Tonight</div>
       <svg viewBox="0 0 200 78" className="w-full mt-2" style={{ overflow: "visible" }} aria-hidden="true">
         <line x1="0" y1="58" x2="200" y2="58" stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
@@ -403,27 +408,9 @@ export function SunsetCard({ day }: { day: DayPoint | undefined }) {
         <circle cx={x} cy={y} r="5.5" fill="#ffd76e" />
       </svg>
       <div className="flex justify-between" style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
-        <span>Sunrise {sunrise ? fmtClock(sunrise) : "—"}</span>
-        <span>Sunset {sunset ? fmtClock(sunset) : "—"}</span>
+        <span>Sunrise {sunrise ? fmtClock(sunrise, timezone) : "—"}</span>
+        <span>Sunset {sunset ? fmtClock(sunset, timezone) : "—"}</span>
       </div>
     </Card>
-  );
-}
-
-export function DetailsGrid({ current }: { current: CurrentConditions }) {
-  const items: ReadonlyArray<readonly [LucideIcon, string, string]> = [
-    [Droplets, "Humidity", `${current.humidity}%`],
-    [Wind, "Wind", `${current.wind} mph`],
-    [Eye, "Visibility", `${current.visibility.toFixed(1)} mi`],
-    [Gauge, "Pressure", `${current.pressure.toFixed(2)} inHg`],
-  ];
-  return (
-    <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-      {items.map(([Icon, label, value]) => (
-        <Card key={label} title={label} icon={Icon} className="fadein">
-          <div style={{ fontSize: 24, fontWeight: 300 }}>{value}</div>
-        </Card>
-      ))}
-    </div>
   );
 }

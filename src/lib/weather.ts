@@ -60,5 +60,8 @@ export async function loadWeather(
     aqi: aqiResult,
     ensemble,
     live: true,
+    timezone: forecast.timezone,
+    updatedAt: forecast.updatedAt,
+    rainTodayIn: forecast.rainTodayIn,
   };
 }

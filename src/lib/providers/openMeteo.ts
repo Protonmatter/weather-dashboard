@@ -1,4 +1,5 @@
 import { fetchJson } from "../http";
+import { assertTimeZone, localDateKey } from "../time";
 import type { Place, HourPoint, DayPoint, CurrentConditions } from "../types";
 
 const FORECAST = "https://api.open-meteo.com/v1/forecast";
@@ -6,23 +7,30 @@ const AIR = "https://air-quality-api.open-meteo.com/v1/air-quality";
 const GEO = "https://geocoding-api.open-meteo.com/v1/search";
 const ENSEMBLE = "https://ensemble-api.open-meteo.com/v1/ensemble";
 
-interface ForecastResponse {
+export interface ForecastResponse {
+  timezone: string;
   current: Record<string, number>;
   hourly: {
-    time: string[];
+    time: number[];
     temperature_2m: number[];
     weather_code: number[];
     precipitation_probability?: (number | null)[];
+    precipitation: (number | null)[];
     is_day: number[];
     visibility?: (number | null)[];
   };
+  minutely_15: {
+    time: number[];
+    rain: (number | null)[];
+    showers: (number | null)[];
+  };
   daily: {
-    time: string[];
+    time: number[];
     weather_code: number[];
     temperature_2m_max: number[];
     temperature_2m_min: number[];
-    sunrise: string[];
-    sunset: string[];
+    sunrise: (number | null)[];
+    sunset: (number | null)[];
     uv_index_max: (number | null)[];
   };
 }
@@ -31,52 +39,62 @@ export interface ForecastBundle {
   current: CurrentConditions;
   hourly: HourPoint[];
   daily: DayPoint[];
+  timezone: string;
+  updatedAt: Date;
+  /** 15-minute liquid rain plus showers through the current local-day provider timestamp, inches. */
+  rainTodayIn: number;
 }
 
 /** Index of the first hour at or after "one hour ago", so "Now" is never in the future. */
-function nowIndex(times: readonly string[]): number {
-  const cutoff = Date.now() - 3600e3;
-  const i = times.findIndex((t) => new Date(t).getTime() >= cutoff);
+function nowIndex(times: readonly number[], nowMs = Date.now()): number {
+  const cutoff = nowMs - 3600e3;
+  const i = times.findIndex((seconds) => seconds * 1000 >= cutoff);
   return i < 0 ? 0 : i;
 }
 
-export async function fetchForecast(
-  lat: number,
-  lon: number,
-  signal?: AbortSignal
-): Promise<ForecastBundle> {
-  const url =
-    `${FORECAST}?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure` +
-    `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
-    `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10`;
+function instant(seconds: number | null | undefined, label: string): Date | null {
+  if (seconds == null || !Number.isFinite(seconds)) return null;
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) throw new Error(`forecast: invalid ${label}`);
+  return date;
+}
 
-  const w = await fetchJson<ForecastResponse>(url, { signal, cacheTtlMs: 120_000 });
-  const start = nowIndex(w.hourly.time);
+export function parseForecastResponse(w: ForecastResponse, nowMs = Date.now()): ForecastBundle {
+  const timezone = assertTimeZone(w.timezone);
+  const updatedAt = instant(w.current.time, "current time");
+  if (!updatedAt) throw new Error("forecast: invalid current time");
+  const start = nowIndex(w.hourly.time, nowMs);
 
-  // Keep the full fetched axis (~240h) — consumers slice what they need (RFC 0003 §2.4).
-  const hourly: HourPoint[] = w.hourly.time.slice(start).map((t, i) => {
+  const hourly: HourPoint[] = w.hourly.time.slice(start).map((seconds, i) => {
     const j = start + i;
+    const time = instant(seconds, "hourly time");
+    if (!time) throw new Error("forecast: invalid hourly time");
     return {
-      time: new Date(t),
+      time,
       temp: Math.round(w.hourly.temperature_2m[j] ?? 0),
       code: w.hourly.weather_code[j] ?? 0,
       isDay: w.hourly.is_day[j] === 1,
       pop: w.hourly.precipitation_probability?.[j] ?? 0,
+      precipitationIn: w.hourly.precipitation[j] ?? 0,
     };
   });
 
-  const daily: DayPoint[] = w.daily.time.map((t, i) => ({
-    date: new Date(`${t}T12:00:00`),
-    low: Math.round(w.daily.temperature_2m_min[i] ?? 0),
-    high: Math.round(w.daily.temperature_2m_max[i] ?? 0),
-    code: w.daily.weather_code[i] ?? 0,
-    uv: w.daily.uv_index_max[i] ?? 0,
-    sunrise: w.daily.sunrise[i] ? new Date(w.daily.sunrise[i]!) : null,
-    sunset: w.daily.sunset[i] ? new Date(w.daily.sunset[i]!) : null,
-  }));
+  const daily: DayPoint[] = w.daily.time.map((seconds, i) => {
+    const date = instant(seconds, "daily time");
+    if (!date) throw new Error("forecast: invalid daily time");
+    return {
+      date,
+      low: Math.round(w.daily.temperature_2m_min[i] ?? 0),
+      high: Math.round(w.daily.temperature_2m_max[i] ?? 0),
+      code: w.daily.weather_code[i] ?? 0,
+      uv: w.daily.uv_index_max[i] ?? 0,
+      sunrise: instant(w.daily.sunrise[i], "sunrise"),
+      sunset: instant(w.daily.sunset[i], "sunset"),
+    };
+  });
 
+  const interval = w.current.interval ?? 900;
+  const precipitationIn = w.current.precipitation ?? 0;
   const current: CurrentConditions = {
     temp: Math.round(w.current.temperature_2m ?? 0),
     feels: Math.round(w.current.apparent_temperature ?? 0),
@@ -86,9 +104,45 @@ export async function fetchForecast(
     wind: Math.round(w.current.wind_speed_10m ?? 0),
     visibility: (w.hourly.visibility?.[start] ?? 16000) / 1609,
     pressure: (w.current.surface_pressure ?? 1013) * 0.02953,
+    precipitationIn,
+    precipRateMmH: interval > 0 ? precipitationIn * 25.4 * (3600 / interval) : 0,
+    cloudCover: Math.round(w.current.cloud_cover ?? 0),
   };
 
-  return { current, hourly, daily };
+  const today = localDateKey(new Date(nowMs), timezone);
+  const rainTodayIn = w.minutely_15.time.reduce((total, seconds, i) => {
+    const time = instant(seconds, "15-minute time");
+    const intervalDay = time ? localDateKey(new Date(time.getTime() - 1), timezone) : "";
+    return time && time <= updatedAt && intervalDay === today
+      ? total + (w.minutely_15.rain[i] ?? 0) + (w.minutely_15.showers[i] ?? 0)
+      : total;
+  }, 0);
+
+  return {
+    current,
+    hourly,
+    daily,
+    timezone,
+    updatedAt,
+    rainTodayIn,
+  };
+}
+
+export async function fetchForecast(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal
+): Promise<ForecastBundle> {
+  const url =
+    `${FORECAST}?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure,precipitation,rain,showers,snowfall,cloud_cover` +
+    `&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,is_day,visibility` +
+    `&minutely_15=rain,showers&past_minutely_15=104&forecast_minutely_15=1` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timeformat=unixtime&timezone=auto&forecast_days=10`;
+
+  const w = await fetchJson<ForecastResponse>(url, { signal });
+  return parseForecastResponse(w);
 }
 
 export async function fetchAqi(
@@ -124,6 +178,22 @@ function memberSeries(
     .filter((m) => m.length === 24);
 }
 
+export function parseEnsembleResponse(
+  value: { hourly: Record<string, unknown> },
+  nowMs = Date.now()
+): EnsembleMembers {
+  const rawTimes = value.hourly["time"];
+  if (!Array.isArray(rawTimes) || !rawTimes.every(
+    (time): time is number => typeof time === "number" && Number.isFinite(time)
+  )) {
+    throw new Error("ensemble: expected Unix timestamps");
+  }
+  const start = nowIndex(rawTimes, nowMs);
+  const precip = memberSeries(value.hourly, "precipitation", start);
+  if (precip.length < 3) throw new Error("ensemble: too few members");
+  return { precip, temp: memberSeries(value.hourly, "temperature_2m", start) };
+}
+
 /** Returns member-major hourly precipitation and temperature series. */
 export async function fetchEnsemble(
   lat: number,
@@ -132,7 +202,8 @@ export async function fetchEnsemble(
 ): Promise<EnsembleMembers> {
   const url =
     `${ENSEMBLE}?latitude=${lat}&longitude=${lon}&hourly=precipitation,temperature_2m` +
-    `&models=gfs025&forecast_days=2&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`;
+    `&models=gfs025&forecast_days=2&precipitation_unit=inch&temperature_unit=fahrenheit` +
+    `&timeformat=unixtime&timezone=auto`;
 
   const j = await fetchJson<{ hourly: Record<string, unknown> }>(url, {
     signal,
@@ -140,14 +211,7 @@ export async function fetchEnsemble(
     cacheTtlMs: 600_000,
   });
 
-  const times = j.hourly["time"] as string[] | undefined;
-  if (!times) throw new Error("ensemble: no time axis");
-  const start = nowIndex(times);
-
-  const precip = memberSeries(j.hourly, "precipitation", start);
-  if (precip.length < 3) throw new Error("ensemble: too few members");
-
-  return { precip, temp: memberSeries(j.hourly, "temperature_2m", start) };
+  return parseEnsembleResponse(j);
 }
 
 interface GeoResponse {

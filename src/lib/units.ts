@@ -1,3 +1,5 @@
+import { formatLocalHour, formatLocalTime } from "./time";
+
 export const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 export const f2c = (f: number): number => (f - 32) * (5 / 9);
@@ -28,13 +30,15 @@ export const aqiBand = (v: number): readonly [number, string, string] =>
 
 export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-export function fmtHour(d: Date): string {
+export function fmtHour(d: Date, timeZone?: string): string {
+  if (timeZone) return formatLocalHour(d, timeZone);
   const h = d.getHours();
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}${h < 12 ? "AM" : "PM"}`;
 }
 
-export function fmtClock(d: Date): string {
+export function fmtClock(d: Date, timeZone?: string): string {
+  if (timeZone) return formatLocalTime(d, timeZone);
   const h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, "0");
   const h12 = h % 12 === 0 ? 12 : h % 12;

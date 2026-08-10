@@ -9,11 +9,11 @@ import {
   AirQualityCard,
   UvCard,
   SunsetCard,
-  DetailsGrid,
 } from "./components/Panels";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { Card } from "./components/Card";
 import { ForecastMapBoundary } from "./components/ForecastMapBoundary";
+import { WeatherMetrics } from "./components/WeatherMetrics";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
 import { useViewport } from "./hooks/useViewport";
 import { recordForecast } from "./lib/verification/store";
@@ -24,6 +24,8 @@ import { fallbackBundle } from "./lib/fallback";
 import { decodeWMO } from "./lib/wmo";
 import { f2c, fmtClock } from "./lib/units";
 import { isAbort } from "./lib/http";
+import { deriveWeatherScene } from "./lib/scene";
+import { dateAtLocalTime } from "./lib/time";
 import type { Place, WeatherBundle } from "./lib/types";
 
 const ForecastMap = lazy(() => import("./components/ForecastMap"));
@@ -42,11 +44,13 @@ const DEFAULT_PLACE: Place = {
 
 function DeferredForecastMap({
   place,
+  timezone,
   target,
   unit,
   enabled,
 }: {
   place: Place;
+  timezone: string;
   target: "phone" | "tablet" | "cinema";
   unit: "F" | "C";
   enabled: boolean;
@@ -78,13 +82,13 @@ function DeferredForecastMap({
     <div ref={host} data-testid="forecast-map-shell">
       {visible ? (
         <ForecastMapBoundary>
-          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
-            <ForecastMap place={place} target={target} unit={unit} enabled={enabled} />
+          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map…</Card>}>
+            <ForecastMap place={place} timezone={timezone} target={target} unit={unit} enabled={enabled} />
           </Suspense>
         </ForecastMapBoundary>
       ) : (
         <Card title="48-hour forecast map" className="mt-4 min-h-72">
-          <span className="text-xs text-white/60">Map loads as it approaches the viewport.</span>
+          <span className="text-xs text-white/60">Map loads nearby.</span>
         </Card>
       )}
     </div>
@@ -106,6 +110,41 @@ export default function App() {
     []
   );
   const weather = useWeatherLoader<WeatherBundle>(fallbackBundle(), loader);
+  const data = weather.data;
+  const placeKey = `${data.place.lat}:${data.place.lon}`;
+  const [rainTodayIn, setRainTodayIn] = useState(data.rainTodayIn);
+  const weatherBusy = useRef<boolean>();
+  const staleRefreshKey = useRef("");
+  weatherBusy.current = weather.busy;
+
+  useEffect(() => {
+    const midnight = dateAtLocalTime(new Date(), data.timezone, 0, 0);
+    const stale = data.updatedAt < midnight;
+    setRainTodayIn(stale ? 0 : data.rainTodayIn);
+    const key = `${placeKey}:${+midnight}`;
+    if (stale && !weather.busy && staleRefreshKey.current !== key) {
+      staleRefreshKey.current = key;
+      void weather.load(data.place);
+    }
+  }, [data, placeKey, weather.busy, weather.load]);
+
+  useEffect(() => {
+    const { place, timezone } = data;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = (): void => {
+      const now = new Date();
+      timer = setTimeout(() => {
+        setRainTodayIn(0);
+        if (!weatherBusy.current) {
+          staleRefreshKey.current = `${placeKey}:${+dateAtLocalTime(new Date(), timezone, 0, 0)}`;
+          void weather.load(place);
+        }
+        schedule();
+      }, +dateAtLocalTime(now, timezone, 0, 0, 1) - +now);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [data.place, data.timezone, placeKey, weather.load]);
 
   const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
 
@@ -170,12 +209,7 @@ export default function App() {
       pick(place);
     } catch (err) {
       if (isAbort(err)) return;
-      const denied = (err as GeolocationPositionError)?.code === 1;
-      setNotice(
-        denied
-          ? "Location access was denied. Search for a city or postal code instead."
-          : "Couldn't get your location. Search for a city or postal code instead."
-      );
+      setNotice("Location unavailable.");
     }
   }, [pick]);
 
@@ -187,15 +221,15 @@ export default function App() {
     cinema: { max: 1760, main: "minmax(360px, 1fr) minmax(0, 2fr)", side: "repeat(auto-fit, minmax(260px, 1fr))", pad: "px-10 py-10", gap: "gap-5" },
   }[target];
 
-  const data = weather.data;
   const { current, hourly, daily, place, aqi, ensemble } = data;
   const cond = decodeWMO(current.code, current.isDay);
+  const scene = deriveWeatherScene(current);
   const today = daily[0];
   const message = notice ?? weather.error ?? search.error;
 
   return (
     <div className="relative w-full min-h-screen overflow-x-clip text-white" style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}>
-      <Backdrop wet={cond.wet} isDay={current.isDay} storm={cond.storm} />
+      <Backdrop scene={scene} />
 
       <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }} data-target={target}>
         <SearchBar
@@ -219,24 +253,32 @@ export default function App() {
           </p>
         )}
 
-        <Hero place={place} current={current} today={today} hourly={hourly} T={T} />
-        <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} />
+        <Hero place={place} current={current} today={today} hourly={hourly} T={T} timezone={data.timezone} />
+        <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} timezone={data.timezone} />
 
         <div
           className={`grid ${layout.gap}`}
           style={{ gridTemplateColumns: layout.main }}
           data-testid="forecast-summary"
         >
-          <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} />
+          <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} timezone={data.timezone} />
           <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.side }}>
             <AirQualityCard aqi={aqi} wet={cond.wet} />
-            <PrecipitationCard ens={ensemble} hourly={hourly} />
+            <PrecipitationCard ens={ensemble} hourly={hourly} timezone={data.timezone} />
             <UvCard uv={today?.uv ?? 0} />
-            <SunsetCard day={today} />
+            <SunsetCard day={today} timezone={data.timezone} />
           </div>
         </div>
 
-        <DeferredForecastMap place={place} target={target} unit={unit} enabled={data.live} />
+        <WeatherMetrics
+          current={current}
+          uv={today?.uv ?? 0}
+          rainTodayIn={rainTodayIn}
+          ensemble={ensemble}
+          placeKey={placeKey}
+        />
+
+        <DeferredForecastMap place={place} timezone={data.timezone} target={target} unit={unit} enabled={data.live} />
 
         {score && (
           <div className="mt-4">
@@ -244,12 +286,10 @@ export default function App() {
           </div>
         )}
 
-        <DetailsGrid current={current} />
-
         <footer className="mt-6 flex items-center justify-between" style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
           <span>
             {data.live ? "Live data from Open-Meteo" : "Sample forecast"} · {ensemble.source} ({ensemble.n}) · Updated{" "}
-            {fmtClock(new Date())}
+            {fmtClock(data.updatedAt, data.timezone)}
           </span>
           <span>{unit === "F" ? "Fahrenheit" : "Celsius"}</span>
         </footer>

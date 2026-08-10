@@ -57,6 +57,7 @@ export interface MapFrame {
 
 export interface MapProps {
   place: Place;
+  timezone: string;
   target: "phone" | "tablet" | "cinema";
   unit: "F" | "C";
   enabled: boolean;

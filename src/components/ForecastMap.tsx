@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, Wind } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CloudRain, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
+import { RadarPanelBoundary } from "./RadarPanelBoundary";
 import { useForecastMap } from "../hooks/useForecastMap";
 import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
@@ -10,7 +11,7 @@ import {
   seedWindParticle,
   windParticleCount,
 } from "../lib/map/wind";
-import { constrainViewport, geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
+import { constrainViewport, geoToScreen, panViewport, visibleTiles, worldSize } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
 import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
 
@@ -18,6 +19,14 @@ const MIN_ZOOM = 2;
 const MAX_ZOOM = 7;
 const PLAYBACK_INTERVAL_MS = 1_600;
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
+const RadarPanel = lazy(() => import("./RadarPanel"));
+type MapMode = "forecast" | "radar";
+
+function minimumZoomForWidth(width: number): number {
+  let zoom = MIN_ZOOM;
+  while (zoom < MAX_ZOOM && worldSize(zoom) < Math.max(0, width)) zoom += 1;
+  return zoom;
+}
 
 const seedFromTime = (time: string): number => {
   let seed = 2166136261;
@@ -69,10 +78,12 @@ function legend(layer: MapLayer, unit: "F" | "C"): { stops: string; labels: stri
   };
 }
 
-export default function ForecastMap({ place, target, unit, enabled }: MapProps) {
+export default function ForecastMap({ place, timezone, target, unit, enabled }: MapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
+  const forecastTabRef = useRef<HTMLButtonElement>(null);
+  const radarTabRef = useRef<HTMLButtonElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
   const wheelDelta = useRef(0);
@@ -95,6 +106,9 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mapVisible, setMapVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
+  const [mode, setMode] = useState<MapMode>("forecast");
+  const [radarRequested, setRadarRequested] = useState(false);
+  const [radarHost, setRadarHost] = useState<HTMLDivElement | null>(null);
 
   const tileConfig = useMemo(() => {
     try {
@@ -162,6 +176,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
       ...current,
       width: size.width,
       height: size.height,
+      zoom: Math.max(current.zoom, minimumZoomForWidth(size.width)),
     }));
   }, [size]);
 
@@ -203,7 +218,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
     const context = canvas.getContext("2d");
     const clear = (): void => context?.clearRect(0, 0, canvas.width, canvas.height);
     if (
-      !context || !frame || !grid || !wind || reducedMotion || !mapVisible || !pageVisible ||
+      mode !== "forecast" || !context || !frame || !grid || !wind || reducedMotion || !mapVisible || !pageVisible ||
       viewport.width <= 0 || viewport.height <= 0
     ) {
       clear();
@@ -274,20 +289,23 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
       window.cancelAnimationFrame(animationFrame);
       context.clearRect(0, 0, viewport.width, viewport.height);
     };
-  }, [frame, grid, mapVisible, pageVisible, reducedMotion, target, viewport.height, viewport.width, wind]);
+  }, [frame, grid, mapVisible, mode, pageVisible, reducedMotion, target, viewport.height, viewport.width, wind]);
 
   useEffect(() => {
-    if (!playing || reducedMotion || !mapVisible || !pageVisible || !grid || grid.times.length < 2) return;
+    if (mode !== "forecast" || !playing || reducedMotion || !mapVisible || !pageVisible || !grid || grid.times.length < 2) return;
     const timer = window.setInterval(() => {
       setTimeIndex((current) => (current + 1) % grid.times.length);
     }, PLAYBACK_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [grid, mapVisible, pageVisible, playing, reducedMotion]);
+  }, [grid, mapVisible, mode, pageVisible, playing, reducedMotion]);
 
   const changeZoom = useCallback((delta: number): void => {
     setViewport((current) => constrainViewport({
       ...current,
-      zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(current.zoom + delta))),
+      zoom: Math.min(
+        MAX_ZOOM,
+        Math.max(minimumZoomForWidth(current.width), Math.round(current.zoom + delta))
+      ),
     }));
   }, []);
 
@@ -324,6 +342,29 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
       ...current,
       center: { lat: place.lat, lon: place.lon },
     }));
+  };
+
+  const selectMode = (nextMode: MapMode): void => {
+    if (nextMode === "radar") setRadarRequested(true);
+    setMode(nextMode);
+  };
+
+  const returnToForecast = (): void => {
+    selectMode("forecast");
+    forecastTabRef.current?.focus();
+  };
+
+  const onModeTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: MapMode): void => {
+    let nextMode: MapMode | null = null;
+    if (event.key === "ArrowRight") nextMode = currentMode === "forecast" ? "radar" : "forecast";
+    if (event.key === "ArrowLeft") nextMode = currentMode === "forecast" ? "radar" : "forecast";
+    if (event.key === "Home") nextMode = "forecast";
+    if (event.key === "End") nextMode = "radar";
+    if (!nextMode) return;
+
+    event.preventDefault();
+    selectMode(nextMode);
+    (nextMode === "forecast" ? forecastTabRef : radarTabRef).current?.focus();
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -394,11 +435,48 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
   const summary = frame
     ? `${frameSummary(frame, layer, unit)}. Valid ${validTime(frame.time)}. ${wind ? `${windDescription} shown` : "Wind hidden"}.`
     : `Forecast map centred on ${place.name}. Forecast field not loaded.`;
-  const busy = state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid);
+  const busy = mode === "forecast" && (state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid));
 
   return (
-    <Card title="48-hour forecast map" icon={MapIcon} className="mt-4" data-testid="forecast-map-card">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <Card title={mode === "forecast" ? "48-hour forecast map" : "Radar observations map"} icon={MapIcon} className="mt-4" data-testid="forecast-map-card">
+      <div className="mb-3 flex gap-1" role="tablist" aria-label="Weather map mode">
+        <button
+          ref={forecastTabRef}
+          id="forecast-map-tab"
+          type="button"
+          role="tab"
+          aria-selected={mode === "forecast"}
+          aria-controls="forecast-map-mode-panel"
+          tabIndex={mode === "forecast" ? 0 : -1}
+          className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "forecast" ? "bg-white/25" : ""}`}
+          onClick={() => selectMode("forecast")}
+          onKeyDown={(event) => onModeTabKeyDown(event, "forecast")}
+        >
+          <MapIcon size={14} aria-hidden="true" /> Forecast fields
+        </button>
+        <button
+          ref={radarTabRef}
+          id="radar-map-tab"
+          type="button"
+          role="tab"
+          aria-selected={mode === "radar"}
+          aria-controls="radar-map-mode-panel"
+          tabIndex={mode === "radar" ? 0 : -1}
+          className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "radar" ? "bg-white/25" : ""}`}
+          onClick={() => selectMode("radar")}
+          onKeyDown={(event) => onModeTabKeyDown(event, "radar")}
+        >
+          <CloudRain size={14} aria-hidden="true" /> Radar observations
+        </button>
+      </div>
+
+      <div
+        id="forecast-map-mode-panel"
+        role="tabpanel"
+        aria-labelledby="forecast-map-tab"
+        hidden={mode !== "forecast"}
+        className={mode === "forecast" ? "mb-3 flex flex-wrap items-center justify-between gap-2" : "hidden"}
+      >
         <div className="flex flex-wrap gap-1" role="group" aria-label="Forecast map layer">
           {(Object.keys(layerLabel) as MapLayer[]).map((value) => (
             <button
@@ -428,13 +506,15 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         style={{ height: size.height, touchAction: "none", userSelect: "none" }}
         tabIndex={0}
         role="region"
-        aria-label="Interactive forecast map. Arrow keys pan, plus and minus zoom, Home recentres."
+        aria-label={`Interactive ${mode === "forecast" ? "forecast" : "radar"} map. Arrow keys pan, plus and minus zoom, Home recentres.`}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={releasePointer}
         onPointerCancel={releasePointer}
         data-testid="forecast-map-viewport"
+        data-viewport-width={viewport.width}
+        data-viewport-height={viewport.height}
       >
         <div className="absolute inset-0 bg-slate-700" aria-hidden="true">
           {tiles.map((tile) => (
@@ -452,23 +532,25 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
             />
           ))}
         </div>
-        <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" role="img" aria-label={summary} />
+        <canvas ref={canvasRef} hidden={mode !== "forecast"} className="absolute inset-0 pointer-events-none" role="img" aria-label={summary} />
         <canvas
           ref={windCanvasRef}
+          hidden={mode !== "forecast"}
           className="absolute inset-0 pointer-events-none"
           aria-hidden="true"
           data-testid="forecast-map-wind"
         />
+        <div ref={setRadarHost} className="absolute inset-0 pointer-events-none" aria-hidden={mode !== "radar"} />
 
         {marker.x >= 0 && marker.x <= viewport.width && marker.y >= 0 && marker.y <= viewport.height && (
           <div
-            className="absolute -ml-2 -mt-2 h-4 w-4 rounded-full border-2 border-white bg-sky-400 shadow-lg"
+            className="absolute z-20 -ml-2 -mt-2 h-4 w-4 rounded-full border-2 border-white bg-sky-400 shadow-lg"
             style={{ left: marker.x, top: marker.y }}
             aria-hidden="true"
           />
         )}
 
-        <div className="absolute left-2 top-2 flex flex-col gap-1" aria-label="Map navigation controls">
+        <div className="absolute left-2 top-2 z-30 flex flex-col gap-1" aria-label="Map navigation controls">
           <button type="button" className={`${CONTROL} h-11 w-11`} onClick={() => changeZoom(1)} aria-label="Zoom in">
             <Plus size={18} aria-hidden="true" />
           </button>
@@ -480,7 +562,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
           </button>
         </div>
 
-        <div
+        {mode === "forecast" && <div
           className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-white/90"
           data-testid="forecast-map-legend"
         >
@@ -492,11 +574,11 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
             {currentLegend.note}
             {wind ? reducedMotion ? " · arrows point toward motion" : " · particles follow forecast flow" : ""}
           </p>
-        </div>
+        </div>}
 
         {tileConfig && (
           <a
-            className="absolute right-2 top-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-950/75 px-2 text-[9px] text-white underline"
+            className="absolute right-2 top-2 z-30 inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-slate-950/75 px-2 text-[9px] text-white underline"
             href={tileConfig.attributionUrl}
             target="_blank"
             rel="noreferrer"
@@ -514,6 +596,7 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         )}
       </div>
 
+      {mode === "forecast" && <>
       <div className="mt-3">
         <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-xs">
           <button
@@ -574,6 +657,42 @@ export default function ForecastMap({ place, target, unit, enabled }: MapProps) 
         )}
         {!tileConfig && " Base tiles are unavailable because tile configuration is invalid."}
       </div>
+      </>}
+
+      {!radarRequested && (
+        <div
+          id="radar-map-mode-panel"
+          role="tabpanel"
+          aria-labelledby="radar-map-tab"
+          hidden
+        />
+      )}
+      {radarRequested && (
+        <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={returnToForecast}>
+          <Suspense fallback={(
+            <div
+              id="radar-map-mode-panel"
+              role="tabpanel"
+              aria-labelledby="radar-map-tab"
+              hidden={mode !== "radar"}
+              className="mt-3 min-h-16 text-xs text-white/60"
+            >
+              <div role="status">Loading radar controls…</div>
+            </div>
+          )}>
+            <RadarPanel
+              place={place}
+              timezone={timezone}
+              viewport={viewport}
+              overlayHost={radarHost}
+              active={mode === "radar"}
+              reducedMotion={reducedMotion}
+              mapVisible={mapVisible}
+              pageVisible={pageVisible}
+            />
+          </Suspense>
+        </RadarPanelBoundary>
+      )}
     </Card>
   );
 }
