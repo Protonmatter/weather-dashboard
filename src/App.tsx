@@ -82,13 +82,13 @@ function DeferredForecastMap({
     <div ref={host} data-testid="forecast-map-shell">
       {visible ? (
         <ForecastMapBoundary>
-          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map module…</Card>}>
+          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map…</Card>}>
             <ForecastMap place={place} timezone={timezone} target={target} unit={unit} enabled={enabled} />
           </Suspense>
         </ForecastMapBoundary>
       ) : (
         <Card title="48-hour forecast map" className="mt-4 min-h-72">
-          <span className="text-xs text-white/60">Map loads as it approaches the viewport.</span>
+          <span className="text-xs text-white/60">Map loads nearby.</span>
         </Card>
       )}
     </div>
@@ -111,23 +111,40 @@ export default function App() {
   );
   const weather = useWeatherLoader<WeatherBundle>(fallbackBundle(), loader);
   const data = weather.data;
+  const placeKey = `${data.place.lat}:${data.place.lon}`;
   const [rainTodayIn, setRainTodayIn] = useState(data.rainTodayIn);
+  const weatherBusy = useRef<boolean>();
+  const staleRefreshKey = useRef("");
+  weatherBusy.current = weather.busy;
 
   useEffect(() => {
-    setRainTodayIn(data.rainTodayIn);
-  }, [data]);
+    const midnight = dateAtLocalTime(new Date(), data.timezone, 0, 0);
+    const stale = data.updatedAt < midnight;
+    setRainTodayIn(stale ? 0 : data.rainTodayIn);
+    const key = `${placeKey}:${+midnight}`;
+    if (stale && !weather.busy && staleRefreshKey.current !== key) {
+      staleRefreshKey.current = key;
+      void weather.load(data.place);
+    }
+  }, [data, placeKey, weather.busy, weather.load]);
 
   useEffect(() => {
-    if (weather.busy) return;
     const { place, timezone } = data;
-    const now = new Date();
-    const nextMidnight = dateAtLocalTime(now, timezone, 0, 0, 1);
-    const timer = window.setTimeout(() => {
-      setRainTodayIn(0);
-      void weather.load(place);
-    }, Math.max(50, nextMidnight.getTime() - now.getTime() + 50));
-    return () => window.clearTimeout(timer);
-  }, [data.place, data.timezone, weather.busy, weather.load]);
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = (): void => {
+      const now = new Date();
+      timer = setTimeout(() => {
+        setRainTodayIn(0);
+        if (!weatherBusy.current) {
+          staleRefreshKey.current = `${placeKey}:${+dateAtLocalTime(new Date(), timezone, 0, 0)}`;
+          void weather.load(place);
+        }
+        schedule();
+      }, +dateAtLocalTime(now, timezone, 0, 0, 1) - +now);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [data.place, data.timezone, placeKey, weather.load]);
 
   const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
 
@@ -192,12 +209,7 @@ export default function App() {
       pick(place);
     } catch (err) {
       if (isAbort(err)) return;
-      const denied = (err as GeolocationPositionError)?.code === 1;
-      setNotice(
-        denied
-          ? "Location access was denied. Search for a city or postal code instead."
-          : "Couldn't get your location. Search for a city or postal code instead."
-      );
+      setNotice("Location unavailable.");
     }
   }, [pick]);
 
@@ -263,7 +275,7 @@ export default function App() {
           uv={today?.uv ?? 0}
           rainTodayIn={rainTodayIn}
           ensemble={ensemble}
-          placeKey={`${place.lat}:${place.lon}`}
+          placeKey={placeKey}
         />
 
         <DeferredForecastMap place={place} timezone={data.timezone} target={target} unit={unit} enabled={data.live} />

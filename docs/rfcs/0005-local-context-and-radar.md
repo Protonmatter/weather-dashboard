@@ -28,11 +28,12 @@ are parsed as instants and every visible civil-time label is formatted with the 
 timezone. The wall clock updates once per second and follows daylight-saving transitions for
 the selected location independently of the viewer's system timezone. A timezone-aware
 boundary timer resets Rain today and requests uncached point data at the selected location's
-local midnight; a throttled background timer performs the same action when the page resumes.
-Point forecasts do not use the short shared HTTP cache, so this boundary request cannot reuse
-a pre-midnight response. The offline sample rounds the current instant to the previous whole
-hour; because its Los Angeles timezone uses whole-hour UTC offsets, this also preserves which
-occurrence of a repeated fall-DST hour is active.
+local midnight. The timer remains armed while another weather load is in flight: the metric
+resets at the boundary, refresh waits for that load to settle, and a pre-midnight response
+cannot restore prior-day rain. Point forecasts do not use the short shared HTTP cache, so the
+boundary request cannot reuse a pre-midnight response. The offline sample rounds the current
+instant to the previous whole hour; because its Los Angeles timezone uses whole-hour UTC
+offsets, this also preserves which occurrence of a repeated fall-DST hour is active.
 
 Current precipitation is a provider interval amount. The scene classifier normalises it to
 millimetres per hour before selecting drizzle, light, moderate, or heavy effects. WMO weather
@@ -74,6 +75,8 @@ until the user first selects Radar. Requests use the common abort, timeout, tran
 circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
 revalidation when that freshness window expires. Cache hits preserve the original network
 acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely.
+The bounded NOAA catalogue query orders valid times newest-first before applying its
+1,000-record cap; parsed frames are restored to chronological playback order.
 When Forecast is active, the last complete radar layer remains in memory but no candidate
 imagery is requested; a current-viewport replacement begins only when Radar is selected again.
 

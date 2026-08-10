@@ -64,8 +64,9 @@ The offline Palo Alto sample uses `America/Los_Angeles`, rounds the current inst
 whole hour, and remains labelled as sample data. Los Angeles uses whole-hour UTC offsets, so
 rounding the instant preserves the active occurrence of the repeated fall-DST hour. At the
 selected location's local midnight, the UI resets the prior-day Rain today value immediately
-and requests uncached point data, preventing reuse of a pre-midnight response. A throttled
-background timer performs the same boundary action when the page resumes.
+and requests uncached point data, preventing reuse of a pre-midnight response. This boundary
+remains active during in-flight weather loads: refresh waits for the active load to settle and
+stale pre-boundary data cannot reinstall prior-day rain.
 
 ### 3.2 Current condition and precipitation
 
@@ -110,6 +111,8 @@ The rendering adapter is provider-specific:
 
 - NOAA MRMS uses the official time-enabled base-reflectivity image service for supported
   US locations. It requests only the settled visible viewport and active historical frame.
+  Catalogue records are ordered newest-first before the 1,000-record query cap and restored
+  to chronological order after parsing.
   Bounding boxes and export dimensions derive from that same settled state. A viewport that
   crosses the dateline is split into at most two canonical-world exports and each segment is
   positioned proportionally over the shared base map.

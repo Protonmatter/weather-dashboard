@@ -85,9 +85,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 247 tests
+npm test            # unit, validation, regression — 266 tests
 npm run contract    # live provider schemas — 10 tests, network required
-npm run e2e         # functional journeys — 34 per browser project
+npm run e2e         # functional journeys — 50 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -296,7 +296,7 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 247 tests
+npm test            # 266 tests
 npm run build
 npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
 ```

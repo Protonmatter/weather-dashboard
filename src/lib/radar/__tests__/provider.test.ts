@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noaaImageLayers, noaaImageUrl, parseNoaaFrames } from "../noaa";
+import { noaaCatalogueUrl, noaaImageLayers, noaaImageUrl, parseNoaaFrames } from "../noaa";
 import { radarProviderFor } from "../provider";
 import { parseRainViewer, rainViewerTileUrl } from "../rainViewer";
 import type { MapViewport } from "../../map/types";
@@ -40,6 +40,13 @@ describe("radar provider boundary", () => {
       ["100000", 100_000],
       ["200000", 200_000],
     ]);
+  });
+
+  it("requests the newest NOAA records before applying the catalogue cap", () => {
+    const url = new URL(noaaCatalogueUrl());
+
+    expect(url.searchParams.get("orderByFields")).toBe("idp_validtime DESC");
+    expect(url.searchParams.get("resultRecordCount")).toBe("1000");
   });
 
   it("sorts and deduplicates RainViewer paths", () => {

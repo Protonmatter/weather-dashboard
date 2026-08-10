@@ -38,7 +38,7 @@ export function noaaCatalogueUrl(): string {
   url.searchParams.set("where", "1=1");
   url.searchParams.set("outFields", "idp_validtime");
   url.searchParams.set("returnGeometry", "false");
-  url.searchParams.set("orderByFields", "idp_validtime ASC");
+  url.searchParams.set("orderByFields", "idp_validtime DESC");
   url.searchParams.set("resultRecordCount", "1000");
   url.searchParams.set("f", "json");
   return url.toString();

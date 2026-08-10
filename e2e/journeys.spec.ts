@@ -88,6 +88,17 @@ function mapFixture(url: URL): Array<Record<string, unknown>> {
   }));
 }
 
+function ensembleFixture(): { hourly: Record<string, unknown> } {
+  const hourly: Record<string, unknown> = { time: forecastFixture.hourly.time };
+  for (let member = 0; member < 12; member++) {
+    hourly[`precipitation_member${String(member).padStart(2, "0")}`] =
+      forecastFixture.hourly.time.map((_, hour) => ((hour + member) % 5 === 0 ? 0.05 : 0));
+    hourly[`temperature_2m_member${String(member).padStart(2, "0")}`] =
+      forecastFixture.hourly.time.map((_, hour) => 60 + (hour % 12) + (member - 6) * 0.8);
+  }
+  return { hourly };
+}
+
 async function stubProviders(page: Page): Promise<void> {
   await page.route("**/api.open-meteo.com/**", (r) => {
     const url = new URL(r.request().url());
@@ -138,14 +149,7 @@ async function stubProviders(page: Page): Promise<void> {
     r.fulfill({ json: { current: { us_aqi: 28 } } })
   );
   await page.route("**/ensemble-api.open-meteo.com/**", (r) => {
-    const hourly: Record<string, unknown> = { time: forecastFixture.hourly.time };
-    for (let m = 0; m < 12; m++) {
-      hourly[`precipitation_member${String(m).padStart(2, "0")}`] =
-        forecastFixture.hourly.time.map((_, i) => ((i + m) % 5 === 0 ? 0.05 : 0));
-      hourly[`temperature_2m_member${String(m).padStart(2, "0")}`] =
-        forecastFixture.hourly.time.map((_, i) => 60 + (i % 12) + (m - 6) * 0.8);
-    }
-    return r.fulfill({ json: { hourly } });
+    return r.fulfill({ json: ensembleFixture() });
   });
   await page.route("**/geocoding-api.open-meteo.com/**", (r) =>
     r.fulfill({
@@ -1036,6 +1040,7 @@ test("degrades to a labelled sample forecast when providers fail", async ({ page
 
 test("resets Rain today and refreshes point data at location-local midnight", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-08-10T06:59:58Z") });
+  await page.clock.pauseAt(new Date("2026-08-10T06:59:58Z"));
   await page.unroute("**/api.open-meteo.com/**");
   let pointRequests = 0;
   let releaseRefresh!: () => void;
@@ -1075,6 +1080,61 @@ test("resets Rain today and refreshes point data at location-local midnight", as
     await expect(rainToday).toHaveAttribute("aria-label", "Rain today: 0.00 in");
   } finally {
     releaseRefresh();
+  }
+});
+
+test("keeps the midnight reset active while a weather load is still in flight", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-08-10T06:59:58Z") });
+  await page.clock.pauseAt(new Date("2026-08-10T06:59:58Z"));
+  await page.unroute("**/api.open-meteo.com/**");
+  await page.unroute("**/ensemble-api.open-meteo.com/**");
+  let pointRequests = 0;
+  let ensembleRequests = 0;
+  let releaseInitialEnsemble!: () => void;
+  const initialEnsembleGate = new Promise<void>((resolve) => {
+    releaseInitialEnsemble = resolve;
+  });
+
+  await page.route("**/api.open-meteo.com/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (!url.searchParams.has("current")) return route.fulfill({ json: mapFixture(url) });
+    pointRequests += 1;
+    const afterMidnight = pointRequests > 1;
+    const currentTime = Date.parse(afterMidnight
+      ? "2026-08-10T07:00:00Z"
+      : "2026-08-10T06:45:00Z") / 1000;
+    return route.fulfill({
+      json: {
+        ...forecastFixture,
+        current: { ...forecastFixture.current, time: currentTime },
+        minutely_15: {
+          time: afterMidnight ? [currentTime] : [currentTime - 900, currentTime],
+          rain: afterMidnight ? [0] : [0.2, 0.3],
+          showers: afterMidnight ? [0] : [0, 0],
+        },
+      },
+    });
+  });
+  await page.route("**/ensemble-api.open-meteo.com/**", async (route) => {
+    ensembleRequests += 1;
+    if (ensembleRequests === 1) await initialEnsembleGate;
+    return route.fulfill({ json: ensembleFixture() });
+  });
+
+  try {
+    await page.goto("/");
+    await expect.poll(() => pointRequests).toBe(1);
+    await expect.poll(() => ensembleRequests).toBe(1);
+
+    await page.clock.runFor(2_200);
+    expect(pointRequests).toBe(1);
+    releaseInitialEnsemble();
+
+    await expect.poll(() => pointRequests).toBe(2);
+    await expect(page.getByTestId("weather-metric-rain-today"))
+      .toHaveAttribute("aria-label", "Rain today: 0.00 in");
+  } finally {
+    releaseInitialEnsemble();
   }
 });
 
