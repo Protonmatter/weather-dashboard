@@ -45,4 +45,15 @@ describe("fallback forecast timezone", () => {
       else process.env["TZ"] = originalTimeZone;
     }
   });
+
+  it("keeps the active repeated hour during the fall DST fold", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-01T09:30:00Z"));
+
+    const bundle = fallbackBundle();
+
+    expect(bundle.hourly[0]!.time.toISOString()).toBe("2026-11-01T09:00:00.000Z");
+    expect(formatLocalTime(bundle.hourly[0]!.time, bundle.timezone)).toBe("1:00 AM");
+    expect(formatLocalTime(bundle.hourly[1]!.time, bundle.timezone)).toBe("2:00 AM");
+  });
 });

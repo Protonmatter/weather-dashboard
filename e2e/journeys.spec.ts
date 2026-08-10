@@ -663,6 +663,48 @@ test("settles a NOAA overlay once after a multi-event map drag", async ({ page }
   await expect.poll(() => imageRequests, { timeout: 15_000 }).toBe(2);
 });
 
+test("settles NOAA export dimensions during responsive resize events", async ({ page }) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const imageRequests: URL[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage")) {
+      imageRequests.push(url);
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect(page.getByTestId("radar-noaa-image")).toBeVisible({ timeout: 15_000 });
+  const loadedRequests = imageRequests.length;
+  const mapViewport = page.getByTestId("forecast-map-viewport");
+  let observedWidth = (await mapViewport.boundingBox())!.width;
+
+  for (const width of [1100, 1020, 940]) {
+    await page.setViewportSize({ width, height: 760 });
+    await expect.poll(async () => (await mapViewport.boundingBox())!.width).not.toBe(observedWidth);
+    const nextWidth = (await mapViewport.boundingBox())!.width;
+    observedWidth = nextWidth;
+    await expect(mapViewport).toHaveAttribute("data-viewport-width", String(Math.round(nextWidth)));
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => resolve();
+      channel.port2.postMessage(undefined);
+    }));
+    await page.clock.runFor(50);
+  }
+
+  expect(imageRequests).toHaveLength(loadedRequests);
+  await page.clock.runFor(250);
+  await expect.poll(() => imageRequests.length, { timeout: 15_000 }).toBeGreaterThan(loadedRequests);
+
+  const mapBox = await mapViewport.boundingBox();
+  const exportSize = imageRequests.at(-1)!.searchParams.get("size")!.split(",").map(Number);
+  expect(exportSize).toEqual([Math.round(mapBox!.width), Math.round(mapBox!.height)]);
+});
+
 test("settles RainViewer tiles until a multi-event map drag finishes", async ({ page }) => {
   await page.clock.install();
   await page.unroute("**/tilecache.rainviewer.com/**");

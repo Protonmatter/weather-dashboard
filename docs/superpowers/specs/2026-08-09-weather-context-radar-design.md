@@ -60,10 +60,11 @@ uses a timezone-aware `YYYY-MM-DD` key, not `Date.toDateString()`. The wall cloc
 `Intl.DateTimeFormat` and therefore changes between PST/PDT, EST/EDT, and equivalent
 regional daylight rules automatically.
 
-The offline Palo Alto sample uses `America/Los_Angeles`, anchors its hourly instants to
-whole hours in that timezone, and remains labelled as sample data. At the selected
-location's local midnight, the UI resets the prior-day Rain today value immediately and
-requests uncached point data, preventing reuse of a pre-midnight response. A throttled
+The offline Palo Alto sample uses `America/Los_Angeles`, rounds the current instant to a
+whole hour, and remains labelled as sample data. Los Angeles uses whole-hour UTC offsets, so
+rounding the instant preserves the active occurrence of the repeated fall-DST hour. At the
+selected location's local midnight, the UI resets the prior-day Rain today value immediately
+and requests uncached point data, preventing reuse of a pre-midnight response. A throttled
 background timer performs the same boundary action when the page resumes.
 
 ### 3.2 Current condition and precipitation
@@ -109,6 +110,9 @@ The rendering adapter is provider-specific:
 
 - NOAA MRMS uses the official time-enabled base-reflectivity image service for supported
   US locations. It requests only the settled visible viewport and active historical frame.
+  Bounding boxes and export dimensions derive from that same settled state. A viewport that
+  crosses the dateline is split into at most two canonical-world exports and each segment is
+  positioned proportionally over the shared base map.
 - RainViewer uses its public Weather Maps metadata and visible XYZ radar tiles outside the
   US. Its public timeline contains two hours of historical frames at ten-minute intervals
   and is capped at its published maximum zoom.

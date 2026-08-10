@@ -508,6 +508,8 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         onPointerUp={releasePointer}
         onPointerCancel={releasePointer}
         data-testid="forecast-map-viewport"
+        data-viewport-width={viewport.width}
+        data-viewport-height={viewport.height}
       >
         <div className="absolute inset-0 bg-slate-700" aria-hidden="true">
           {tiles.map((tile) => (
@@ -677,7 +679,6 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
               place={place}
               timezone={timezone}
               viewport={viewport}
-              size={size}
               overlayHost={radarHost}
               active={mode === "radar"}
               reducedMotion={reducedMotion}

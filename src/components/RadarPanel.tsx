@@ -4,7 +4,7 @@ import { Pause, Play, RotateCcw } from "lucide-react";
 import { useRadar } from "../hooks/useRadar";
 import { visibleTiles } from "../lib/map/mercator";
 import type { MapViewport } from "../lib/map/types";
-import { noaaImageUrl } from "../lib/radar/noaa";
+import { noaaImageLayers } from "../lib/radar/noaa";
 import { radarProviderFor } from "../lib/radar/provider";
 import { rainViewerTileUrl } from "../lib/radar/rainViewer";
 import { formatLocalDate, formatLocalTime, timezoneLabel } from "../lib/time";
@@ -19,7 +19,6 @@ interface RadarPanelProps {
   place: Place;
   timezone: string;
   viewport: MapViewport;
-  size: { width: number; height: number };
   overlayHost: HTMLDivElement | null;
   active: boolean;
   reducedMotion: boolean;
@@ -44,7 +43,6 @@ export default function RadarPanel({
   place,
   timezone,
   viewport,
-  size,
   overlayHost,
   active,
   reducedMotion,
@@ -96,14 +94,14 @@ export default function RadarPanel({
     imageViewport.height,
   ].join(":");
   const radarImages = useMemo<RadarImageSpec[]>(() => {
-    if (source?.provider === "noaa-mrms" && frame && size.width > 0 && size.height > 0) {
-      const src = noaaImageUrl(frame, settledViewport, size);
-      return [{
-        key: src,
-        src,
-        className: "absolute inset-0 h-full w-full object-fill",
-        testId: "radar-noaa-image",
-      }];
+    if (source?.provider === "noaa-mrms" && frame && settledViewport.width > 0 && settledViewport.height > 0) {
+      return noaaImageLayers(frame, settledViewport).map((layer, index) => ({
+        key: layer.src,
+        src: layer.src,
+        className: "absolute top-0 h-full object-fill",
+        style: { left: layer.left, width: layer.width },
+        testId: index === 0 ? "radar-noaa-image" : undefined,
+      }));
     }
     if (source?.provider === "rainviewer" && source.imageHost && frame) {
       return tiles.map((tile) => ({
@@ -115,7 +113,7 @@ export default function RadarPanel({
       }));
     }
     return [];
-  }, [frame, settledViewport, size, source, tiles]);
+  }, [frame, settledViewport, source, tiles]);
   const imageRequestKey = `${sourceKey}:${radarImages.map((image) => image.key).join("|")}`;
   const visibleObservation = radarImages.length > 0 && loadedObservation?.contextKey === imageContextKey
     ? loadedObservation

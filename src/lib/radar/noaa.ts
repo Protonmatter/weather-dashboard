@@ -63,26 +63,23 @@ function webMercator(point: { lat: number; lon: number }): { x: number; y: numbe
   return { x, y };
 }
 
-export function noaaImageUrl(
+export interface NoaaImageLayer {
+  src: string;
+  left: number;
+  width: number;
+}
+
+function noaaExportUrl(
   frame: RadarFrame,
-  viewport: MapViewport,
-  size: { width: number; height: number }
+  west: number,
+  east: number,
+  north: number,
+  south: number,
+  width: number,
+  height: number
 ): string {
-  const northWestGeo = screenToGeo({ x: 0, y: 0 }, viewport);
-  const southEastGeo = screenToGeo({ x: viewport.width, y: viewport.height }, viewport);
-  const mapWorldSize = worldSize(viewport.zoom);
-  const visibleWidth = Math.min(mapWorldSize, Math.max(1, viewport.width));
-  const halfLongitudeSpan = visibleWidth / mapWorldSize * 180;
-  const northWest = webMercator({
-    lat: northWestGeo.lat,
-    lon: viewport.center.lon - halfLongitudeSpan,
-  });
-  const southEast = webMercator({
-    lat: southEastGeo.lat,
-    lon: viewport.center.lon + halfLongitudeSpan,
-  });
-  const width = Math.min(4096, Math.max(1, Math.round(size.width)));
-  const height = Math.min(4096, Math.max(1, Math.round(size.height)));
+  const northWest = webMercator({ lat: north, lon: west });
+  const southEast = webMercator({ lat: south, lon: east });
   const url = new URL(`${SERVICE}/exportImage`);
   url.searchParams.set("bbox", [northWest.x, southEast.y, southEast.x, northWest.y].join(","));
   url.searchParams.set("bboxSR", "3857");
@@ -92,5 +89,61 @@ export function noaaImageUrl(
   url.searchParams.set("transparent", "true");
   url.searchParams.set("time", String(frame.validAt.getTime()));
   url.searchParams.set("f", "image");
+  return url.toString();
+}
+
+/** Split a wrapped viewport so every ArcGIS export remains inside one EPSG:3857 world. */
+export function noaaImageLayers(frame: RadarFrame, viewport: MapViewport): NoaaImageLayer[] {
+  const northWestGeo = screenToGeo({ x: 0, y: 0 }, viewport);
+  const southEastGeo = screenToGeo({ x: viewport.width, y: viewport.height }, viewport);
+  const mapWorldSize = worldSize(viewport.zoom);
+  const visibleWidth = Math.min(mapWorldSize, Math.max(1, viewport.width));
+  const halfLongitudeSpan = visibleWidth / mapWorldSize * 180;
+  const west = viewport.center.lon - halfLongitudeSpan;
+  const east = viewport.center.lon + halfLongitudeSpan;
+  const span = east - west;
+  const renderWidth = Math.max(1, viewport.width);
+  const height = Math.min(4096, Math.max(1, Math.round(viewport.height)));
+  const layers: NoaaImageLayer[] = [];
+
+  for (let cursor = west; cursor < east && layers.length < 2;) {
+    const world = Math.floor((cursor + 180) / 360);
+    const segmentEnd = Math.min(east, 180 + world * 360);
+    const left = (cursor - west) / span * renderWidth;
+    const right = (segmentEnd - west) / span * renderWidth;
+    const width = right - left;
+    layers.push({
+      src: noaaExportUrl(
+        frame,
+        cursor - world * 360,
+        segmentEnd - world * 360,
+        northWestGeo.lat,
+        southEastGeo.lat,
+        Math.min(4096, Math.max(1, Math.round(width))),
+        height
+      ),
+      left,
+      width,
+    });
+    cursor = segmentEnd;
+  }
+  return layers;
+}
+
+/**
+ * Backward-compatible single-image helper for callers whose viewport does not wrap.
+ * Wrapped UI rendering must use `noaaImageLayers` so both world-edge segments appear.
+ */
+export function noaaImageUrl(
+  frame: RadarFrame,
+  viewport: MapViewport,
+  size: { width: number; height: number }
+): string {
+  const [layer] = noaaImageLayers(frame, viewport);
+  if (!layer) throw new Error("NOAA radar viewport produced no image layer");
+  const url = new URL(layer.src);
+  const width = Math.min(4096, Math.max(1, Math.round(size.width)));
+  const height = Math.min(4096, Math.max(1, Math.round(size.height)));
+  url.searchParams.set("size", `${width},${height}`);
   return url.toString();
 }

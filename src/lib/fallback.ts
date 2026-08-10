@@ -19,7 +19,9 @@ const DAY_ROWS: ReadonlyArray<readonly [number, number, number]> = [
 export function fallbackBundle(): WeatherBundle {
   const now = new Date();
   const currentHour = hourInTimeZone(now, FALLBACK_TIMEZONE);
-  const base = dateAtLocalTime(now, FALLBACK_TIMEZONE, currentHour, 0);
+  // Los Angeles has whole-hour UTC offsets; rounding the anchor instant preserves
+  // which occurrence of a repeated fall-DST hour is currently active.
+  const base = new Date(Math.floor(now.getTime() / 3600e3) * 3600e3);
 
   const hourly = HOUR_TEMPS.map((temp, i) => {
     const time = new Date(base.getTime() + i * 3600e3);

@@ -30,7 +30,9 @@ the selected location independently of the viewer's system timezone. A timezone-
 boundary timer resets Rain today and requests uncached point data at the selected location's
 local midnight; a throttled background timer performs the same action when the page resumes.
 Point forecasts do not use the short shared HTTP cache, so this boundary request cannot reuse
-a pre-midnight response.
+a pre-midnight response. The offline sample rounds the current instant to the previous whole
+hour; because its Los Angeles timezone uses whole-hour UTC offsets, this also preserves which
+occurrence of a repeated fall-DST hour is active.
 
 Current precipitation is a provider interval amount. The scene classifier normalises it to
 millimetres per hour before selecting drizzle, light, moderate, or heavy effects. WMO weather
@@ -76,11 +78,14 @@ When Forecast is active, the last complete radar layer remains in memory but no 
 imagery is requested; a current-viewport replacement begins only when Radar is selected again.
 
 Viewport changes settle for 200 milliseconds before either provider rebuilds candidate
-imagery. NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box,
-a fixed frame time, transparency, and an image size capped at 4096 pixels per dimension.
-Antimeridian-crossing longitudes are normalised into one ordered projected extent. The shared
-map raises its minimum zoom on wide layouts so the visible viewport never spans more than
-one projected world and NOAA imagery retains the same longitude scale as base tiles. RainViewer
+imagery. NOAA bounding boxes and export dimensions come from that same settled viewport, so
+resize events cannot combine old bounds with new dimensions. Requests use a fixed service
+origin, a fixed frame time, transparency, and an image size capped at 4096 pixels per
+dimension. An antimeridian-crossing viewport is split into at most two ordered Web Mercator
+exports, each bounded to the canonical projected world and positioned in proportion to its
+longitude span. The shared map raises its minimum zoom on wide layouts so the visible viewport
+never spans more than one projected world and NOAA imagery retains the same longitude scale as
+base tiles. RainViewer
 accepts only `https://tilecache.rainviewer.com`, validates frame paths against the documented
 `/v2/radar/<id>` shape, rejects traversal/query material, and caps tiles at zoom 7.
 

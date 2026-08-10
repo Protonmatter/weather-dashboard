@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noaaImageUrl, parseNoaaFrames } from "../noaa";
+import { noaaImageLayers, noaaImageUrl, parseNoaaFrames } from "../noaa";
 import { radarProviderFor } from "../provider";
 import { parseRainViewer, rainViewerTileUrl } from "../rainViewer";
 import type { MapViewport } from "../../map/types";
@@ -98,11 +98,10 @@ describe("radar provider boundary", () => {
       width: 800,
       height: 500,
     };
-    const noaa = new URL(noaaImageUrl(
+    const noaa = new URL(noaaImageLayers(
       { id: "100000", validAt: new Date(100_000) },
-      viewport,
-      { width: 800, height: 500 }
-    ));
+      viewport
+    )[0]!.src);
     expect(noaa.hostname).toBe("mapservices.weather.noaa.gov");
     expect(noaa.pathname.endsWith("/ImageServer/exportImage")).toBe(true);
     expect(noaa.searchParams.get("time")).toBe("100000");
@@ -121,36 +120,59 @@ describe("radar provider boundary", () => {
   });
 
   it("keeps a NOAA bbox ordered when the viewport crosses the antimeridian", () => {
-    const url = new URL(noaaImageUrl(
+    const layers = noaaImageLayers(
       { id: "100000", validAt: new Date(100_000) },
       {
         center: { lat: 20, lon: 179 },
         zoom: 2,
         width: 800,
         height: 500,
-      },
-      { width: 800, height: 500 }
-    ));
-    const bbox = url.searchParams.get("bbox")!.split(",").map(Number);
+      }
+    );
+    const webMercatorLimit = Math.PI * 6_378_137;
 
-    expect(bbox[0]).toBeLessThan(bbox[2]!);
+    expect(layers).toHaveLength(2);
+    expect(layers.reduce((total, layer) => total + layer.width, 0)).toBeCloseTo(800, 8);
+    for (const layer of layers) {
+      const bbox = new URL(layer.src).searchParams.get("bbox")!.split(",").map(Number);
+      expect(bbox[0]).toBeLessThan(bbox[2]!);
+      expect(bbox[0]).toBeGreaterThanOrEqual(-webMercatorLimit);
+      expect(bbox[2]).toBeLessThanOrEqual(webMercatorLimit);
+    }
+  });
+
+  it("keeps the legacy NOAA helper size independent from viewport geometry", () => {
+    const frame = { id: "100000", validAt: new Date(100_000) };
+    const viewport: MapViewport = {
+      center: { lat: 37.44, lon: -122.14 },
+      zoom: 5,
+      width: 800,
+      height: 500,
+    };
+    const layerUrl = new URL(noaaImageLayers(frame, viewport)[0]!.src);
+    const legacyUrl = new URL(noaaImageUrl(frame, viewport, { width: 640, height: 400 }));
+
+    expect(legacyUrl.searchParams.get("bbox")).toBe(layerUrl.searchParams.get("bbox"));
+    expect(legacyUrl.searchParams.get("size")).toBe("640,400");
   });
 
   it("clamps a wide NOAA viewport to one ordered Web Mercator world", () => {
-    const url = new URL(noaaImageUrl(
+    const layers = noaaImageLayers(
       { id: "100000", validAt: new Date(100_000) },
       {
         center: { lat: 37.4419, lon: -122.143 },
         zoom: 2,
         width: 1760,
         height: 500,
-      },
-      { width: 1760, height: 500 }
-    ));
-    const bbox = url.searchParams.get("bbox")!.split(",").map(Number);
+      }
+    );
     const webMercatorWorldWidth = 2 * Math.PI * 6_378_137;
 
-    expect(bbox[0]).toBeLessThan(bbox[2]!);
-    expect(bbox[2]! - bbox[0]!).toBeLessThanOrEqual(webMercatorWorldWidth);
+    expect(layers.reduce((total, layer) => total + layer.width, 0)).toBeCloseTo(1760, 8);
+    for (const layer of layers) {
+      const bbox = new URL(layer.src).searchParams.get("bbox")!.split(",").map(Number);
+      expect(bbox[0]).toBeLessThan(bbox[2]!);
+      expect(bbox[2]! - bbox[0]!).toBeLessThanOrEqual(webMercatorWorldWidth);
+    }
   });
 });
