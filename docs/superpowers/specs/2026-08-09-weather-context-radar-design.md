@@ -68,10 +68,10 @@ data.
 ### 3.2 Current condition and precipitation
 
 The Open-Meteo point request adds current precipitation, rain, showers, snowfall, cloud
-cover, and the provider interval, plus hourly precipitation. Canonical precipitation is
-stored in inches to match the existing ensemble summary; scene-rate calculations convert
-from the returned interval total to millimetres per hour before classifying visual
-intensity.
+cover, and the provider interval, plus hourly precipitation, rain, and showers. Canonical
+precipitation is stored in inches to match the existing ensemble summary; scene-rate
+calculations convert from the returned interval total to millimetres per hour before
+classifying visual intensity. The Rain today metric sums only hourly liquid rain and showers.
 
 The weather bundle exposes:
 
@@ -138,7 +138,7 @@ the map. It contains:
 - Humidity
 - UV index
 - Rain today
-- Next 24h rain
+- Next 24h precipitation
 - Wind
 - Visibility
 - Pressure
@@ -244,7 +244,8 @@ migration or backend rollback is required.
 - Parse and validate timezone metadata and Unix instants.
 - Format DST-aware local clocks and day keys across spring/fall transitions.
 - Preserve hourly, daily, sunrise, and sunset labels when the viewer timezone differs.
-- Compute estimated-today precipitation without including future local-day hours.
+- Compute estimated-today liquid rain and showers without including snowfall or future
+  local-day hours.
 - Preserve ensemble next-24-hour quantiles and unit semantics.
 - Classify clear/cloud/fog/rain/snow/storm scenes at intensity boundaries.
 - Prove deterministic scene generation and bounded element counts.

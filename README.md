@@ -33,7 +33,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
   calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
   two minutes from its original network acquisition time. Radar chunk failures stay inside
-  radar mode; imagery failures retain the last complete layer and expose an explicit retry.
+  radar mode; wide maps enforce a one-world minimum zoom, and imagery failures retain the
+  last complete layer with its matching observation time and expose an explicit retry.
   Both timelines are independently
   scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
@@ -195,10 +196,11 @@ layer can mean either no precipitation or no provider coverage; the UI says so r
 claiming a clear sky. Image delivery failures are reported separately and are never described
 as valid blank coverage.
 
-"Rain today" sums the Open-Meteo hourly precipitation estimate through the current provider
-timestamp in the selected place's local calendar day. It is not a physical rain-gauge
-observation. "Next 24h rain" is the ensemble median and its expanded panel reports p10–p90;
-the two values intentionally answer different questions.
+"Rain today" sums Open-Meteo's hourly liquid rain and shower estimates through the current
+provider timestamp in the selected place's local calendar day; snowfall is excluded. It is
+not a physical rain-gauge observation. "Next 24h precip" is the ensemble total-precipitation
+median, which can include snow water equivalent, and its expanded panel reports p10–p90; the
+two values intentionally answer different questions.
 
 Opening the map sends its bounded coordinate grid to Open-Meteo and requests the visible
 tile range from the configured tile provider. Map grids are held only in a four-entry

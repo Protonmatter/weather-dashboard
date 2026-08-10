@@ -32,6 +32,8 @@ const forecastFixture = {
     // fetch threw on an absent array inside Promise.allSettled and reconciliation was
     // silently unexercisable in e2e.
     precipitation: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
+    rain: Array.from({ length: 48 }, (_, i) => (i % 5 === 0 ? 0.03 : 0)),
+    showers: Array.from({ length: 48 }, () => 0),
   },
   daily: {
     time: Array.from({ length: 10 }, (_, i) => fixtureNow - (fixtureNow % 86400) + i * 86400),
@@ -195,6 +197,7 @@ test("shows a wall clock in the selected location timezone", async ({ page }) =>
 test("previews and pins weather metric details with keyboard parity", async ({ page }) => {
   await page.goto("/");
 
+  await expect(page.getByTestId("weather-metric-rain-next")).toContainText("Next 24h precip");
   const humidity = page.getByTestId("weather-metric-humidity");
   await humidity.focus();
   await expect(page.getByRole("tooltip")).toContainText("84% relative humidity");
@@ -333,6 +336,30 @@ test("16:9 desktop viewport switches to the cinema layout", async ({ page }) => 
   await expect(page.locator('[data-target="cinema"]')).toBeVisible();
 });
 
+test("keeps NOAA radar aligned on a wide zoomed-out map", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  let radarImageUrl: URL | null = null;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage")) {
+      radarImageUrl = url;
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByTestId("forecast-map-viewport").focus();
+  for (let press = 0; press < 5; press += 1) await page.keyboard.press("-");
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect.poll(() => radarImageUrl).not.toBeNull();
+
+  const bbox = radarImageUrl!.searchParams.get("bbox")!.split(",").map(Number);
+  const imageWidth = Number(radarImageUrl!.searchParams.get("size")!.split(",")[0]);
+  const webMercatorWorldWidth = 2 * Math.PI * 6_378_137;
+  expect(imageWidth).toBeGreaterThan(1024);
+  expect(bbox[2]! - bbox[0]!).toBeLessThan(webMercatorWorldWidth);
+});
+
 test("loads NOAA MRMS only when the U.S. radar mode is selected", async ({ page }) => {
   let noaaCatalogueRequests = 0;
   page.on("request", (request) => {
@@ -394,6 +421,11 @@ test("supports keyboard map tabs and describes the active map mode", async ({ pa
   await expect(radarTab).toHaveAttribute("tabindex", "0");
   await expect(forecastTab).toHaveAttribute("tabindex", "-1");
   await expect(page.getByRole("heading", { name: "Radar observations map" })).toBeVisible();
+  const forecastPanel = page.locator("#forecast-map-mode-panel");
+  await expect(forecastPanel).toHaveCount(1);
+  await expect(forecastPanel).toHaveAttribute("role", "tabpanel");
+  await expect(forecastPanel).toHaveAttribute("aria-labelledby", "forecast-map-tab");
+  await expect(forecastPanel).toBeHidden();
 
   await page.keyboard.press("ArrowLeft");
   await expect(forecastTab).toBeFocused();
@@ -489,6 +521,46 @@ test("waits for a radar layer before advancing playback again", async ({ page })
 
     releaseDelayedLayer();
     await expect(timeSlider).toHaveValue("1", { timeout: 3_000 });
+  } finally {
+    releaseDelayedLayer();
+  }
+});
+
+test("labels retained radar imagery with its loaded frame time", async ({ page }) => {
+  let initialTime: string | null = null;
+  let delayedTime: string | null = null;
+  let releaseDelayedLayer!: () => void;
+  const delayedLayerGate = new Promise<void>((resolve) => {
+    releaseDelayedLayer = resolve;
+  });
+
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage"),
+    async (route) => {
+      const requestTime = new URL(route.request().url()).searchParams.get("time") ?? "missing";
+      if (initialTime === null) initialTime = requestTime;
+      if (requestTime !== initialTime) {
+        delayedTime ??= requestTime;
+        if (requestTime === delayedTime) await delayedLayerGate;
+      }
+      await route.fulfill({ contentType: "image/png", body: transparentPixel });
+    }
+  );
+
+  try {
+    await page.goto("/");
+    await revealForecastMap(page);
+    await page.getByRole("tab", { name: "Radar observations" }).click();
+    await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1, { timeout: 15_000 });
+
+    const observedTime = page.getByTestId("radar-observed-time");
+    const loadedTime = await observedTime.innerText();
+    await page.getByTestId("radar-time").fill("0");
+    await expect.poll(() => delayedTime).not.toBeNull();
+    await expect(observedTime).toHaveText(loadedTime);
+
+    releaseDelayedLayer();
+    await expect(observedTime).not.toHaveText(loadedTime, { timeout: 3_000 });
   } finally {
     releaseDelayedLayer();
   }

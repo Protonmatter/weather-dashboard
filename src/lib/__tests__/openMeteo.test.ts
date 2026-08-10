@@ -27,6 +27,8 @@ const response = () => ({
     weather_code: [61, 63, 3],
     precipitation_probability: [70, 80, 20],
     precipitation: [0.1, 0.2, 0.5],
+    rain: [0.1, 0.15, 0.4],
+    showers: [0, 0.05, 0.1],
     is_day: [1, 1, 1],
     visibility: [12_000, 13_000, 16_000],
   },
@@ -72,10 +74,23 @@ describe("Open-Meteo point forecast parser", () => {
     fixture.current.time = midnight + 5_400;
     fixture.hourly.time = [midnight - 3_600, midnight, midnight + 3_600];
     fixture.hourly.precipitation = [0.1, 0.2, 0.3];
+    fixture.hourly.rain = [0.1, 0.2, 0.3];
+    fixture.hourly.showers = [0, 0, 0];
 
     const parsed = parseForecastResponse(fixture, (midnight + 5_400) * 1000);
 
     expect(parsed.rainTodayIn).toBeCloseTo(0.3, 8);
+  });
+
+  it("does not count snow-only precipitation as rain today", () => {
+    const fixture = response();
+    fixture.hourly.precipitation = [0.4, 0.5, 0.7];
+    fixture.hourly.rain = [0, 0, 0];
+    fixture.hourly.showers = [0, 0, 0];
+
+    const parsed = parseForecastResponse(fixture, 1_786_291_200_000);
+
+    expect(parsed.rainTodayIn).toBe(0);
   });
 
   it("fails closed on an invalid provider timezone", () => {

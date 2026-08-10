@@ -34,12 +34,14 @@ codes provide a fallback when the interval amount is absent or zero.
 
 The metric strip deliberately separates:
 
-- **Rain today:** sum of Open-Meteo hourly precipitation estimates through the current
-  provider timestamp within the location's local calendar day. Hour-ending totals at exactly
-  local midnight belong to the preceding day. This is not a rain gauge.
-- **Next 24h rain:** live ensemble accumulation includes p10–p90 and member count. When the
-  ensemble provider is unavailable, the deterministic fallback is labelled as a modeled
-  estimate and never described as live ensemble uncertainty.
+- **Rain today:** sum of Open-Meteo hourly liquid rain and shower estimates through the
+  current provider timestamp within the location's local calendar day; snowfall is excluded.
+  Hour-ending totals at exactly local midnight belong to the preceding day. This is not a
+  rain gauge.
+- **Next 24h precip:** live total-precipitation ensemble accumulation, including snow water
+  equivalent when applicable, includes p10–p90 and member count. When the ensemble provider
+  is unavailable, the deterministic fallback is labelled as a modeled estimate and never
+  described as live ensemble uncertainty.
 
 ## 3. Interaction and accessibility
 
@@ -70,14 +72,17 @@ acquisition timestamp, so changing locations cannot postpone provider refresh in
 NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box, a fixed
 frame time, transparency, and an image size capped at 4096 pixels per dimension. Viewport
 changes settle for 200 milliseconds before swapping the image, and antimeridian-crossing
-longitudes are normalised into one ordered projected extent. RainViewer
+longitudes are normalised into one ordered projected extent. The shared map raises its
+minimum zoom on wide layouts so the visible viewport never spans more than one projected
+world and NOAA imagery retains the same longitude scale as base tiles. RainViewer
 accepts only `https://tilecache.rainviewer.com`, validates frame paths against the documented
 `/v2/radar/<id>` shape, rejects traversal/query material, and caps tiles at zoom 7.
 
 Both providers retain visible attribution. The UI distinguishes observed radar from forecast
 precipitation and states that a blank layer can mean no precipitation or no radar coverage.
 Image sets become visible only after the complete layer loads. A failed replacement retains
-the prior successful layer when it belongs to the same place and exposes an imagery retry.
+the prior successful layer and its matching observation time when it belongs to the same
+place, exposes an imagery retry, and pauses playback until a complete replacement loads.
 
 ## 5. Failure and verification
 

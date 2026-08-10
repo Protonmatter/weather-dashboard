@@ -103,6 +103,6 @@ export interface WeatherBundle {
   timezoneAbbreviation: string;
   utcOffsetSeconds: number;
   updatedAt: Date;
-  /** Estimated model/analysis accumulation since local midnight, inches. */
+  /** Estimated model/analysis liquid rain plus showers since local midnight, inches. */
   rainTodayIn: number;
 }

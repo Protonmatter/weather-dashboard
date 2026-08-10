@@ -38,7 +38,7 @@ d("contract: Open-Meteo forecast", () => {
     const j = await getJson(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure,precipitation,rain,showers,snowfall,cloud_cover` +
-        `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility,precipitation` +
+        `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility,precipitation,rain,showers` +
         `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
         `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&timeformat=unixtime&forecast_days=10`
     );
@@ -56,6 +56,8 @@ d("contract: Open-Meteo forecast", () => {
     expect(typeof hourly["time"]![0]).toBe("number");
     expect(hourly["temperature_2m"]).toHaveLength(hourly["time"]!.length);
     expect(hourly["precipitation"]).toHaveLength(hourly["time"]!.length);
+    expect(hourly["rain"]).toHaveLength(hourly["time"]!.length);
+    expect(hourly["showers"]).toHaveLength(hourly["time"]!.length);
     expect(daily["time"]).toHaveLength(10);
     expect(daily["sunrise"]).toHaveLength(10);
   }, 30_000);

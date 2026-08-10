@@ -11,7 +11,7 @@ import {
   seedWindParticle,
   windParticleCount,
 } from "../lib/map/wind";
-import { constrainViewport, geoToScreen, panViewport, visibleTiles } from "../lib/map/mercator";
+import { constrainViewport, geoToScreen, panViewport, visibleTiles, worldSize } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
 import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
 
@@ -21,6 +21,12 @@ const PLAYBACK_INTERVAL_MS = 1_600;
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
 const RadarPanel = lazy(() => import("./RadarPanel"));
 type MapMode = "forecast" | "radar";
+
+function minimumZoomForWidth(width: number): number {
+  let zoom = MIN_ZOOM;
+  while (zoom < MAX_ZOOM && worldSize(zoom) < Math.max(0, width)) zoom += 1;
+  return zoom;
+}
 
 const seedFromTime = (time: string): number => {
   let seed = 2166136261;
@@ -170,6 +176,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
       ...current,
       width: size.width,
       height: size.height,
+      zoom: Math.max(current.zoom, minimumZoomForWidth(size.width)),
     }));
   }, [size]);
 
@@ -295,7 +302,10 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const changeZoom = useCallback((delta: number): void => {
     setViewport((current) => constrainViewport({
       ...current,
-      zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(current.zoom + delta))),
+      zoom: Math.min(
+        MAX_ZOOM,
+        Math.max(minimumZoomForWidth(current.width), Math.round(current.zoom + delta))
+      ),
     }));
   }, []);
 
@@ -455,36 +465,35 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         </button>
       </div>
 
-      {mode === "forecast" && (
-        <div
-          id="forecast-map-mode-panel"
-          role="tabpanel"
-          aria-labelledby="forecast-map-tab"
-          className="mb-3 flex flex-wrap items-center justify-between gap-2"
-        >
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Forecast map layer">
-            {(Object.keys(layerLabel) as MapLayer[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={`${CONTROL} px-3 min-h-11 text-xs ${layer === value ? "bg-white/25" : ""}`}
-                aria-pressed={layer === value}
-                onClick={() => setLayer(value)}
-              >
-                {layerLabel[value]}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className={`${CONTROL} gap-1.5 px-3 min-h-11 text-xs ${wind ? "bg-white/25" : ""}`}
-            aria-pressed={wind}
-            onClick={() => setWind((value) => !value)}
-          >
-            <Wind size={14} aria-hidden="true" /> Wind flow
-          </button>
+      <div
+        id="forecast-map-mode-panel"
+        role="tabpanel"
+        aria-labelledby="forecast-map-tab"
+        hidden={mode !== "forecast"}
+        className={mode === "forecast" ? "mb-3 flex flex-wrap items-center justify-between gap-2" : "hidden"}
+      >
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Forecast map layer">
+          {(Object.keys(layerLabel) as MapLayer[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={`${CONTROL} px-3 min-h-11 text-xs ${layer === value ? "bg-white/25" : ""}`}
+              aria-pressed={layer === value}
+              onClick={() => setLayer(value)}
+            >
+              {layerLabel[value]}
+            </button>
+          ))}
         </div>
-      )}
+        <button
+          type="button"
+          className={`${CONTROL} gap-1.5 px-3 min-h-11 text-xs ${wind ? "bg-white/25" : ""}`}
+          aria-pressed={wind}
+          onClick={() => setWind((value) => !value)}
+        >
+          <Wind size={14} aria-hidden="true" /> Wind flow
+        </button>
+      </div>
 
       <div
         ref={mapRef}

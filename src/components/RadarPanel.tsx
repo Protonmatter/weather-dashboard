@@ -57,7 +57,11 @@ export default function RadarPanel({
   const [playing, setPlaying] = useState(false);
   const [imageFailure, setImageFailure] = useState<{ requestKey: string; message: string } | null>(null);
   const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
-  const [loadedImageRequestKey, setLoadedImageRequestKey] = useState<string | null>(null);
+  const [loadedObservation, setLoadedObservation] = useState<{
+    contextKey: string;
+    requestKey: string;
+    validAt: Date;
+  } | null>(null);
   const frames = source?.frames ?? [];
   const sourceKey = source ? `${source.provider}:${source.fetchedAt}:${frames.at(-1)?.id ?? "empty"}` : "loading";
   const timeIndex = selection?.sourceKey === sourceKey
@@ -103,7 +107,10 @@ export default function RadarPanel({
     return [];
   }, [frame, settledViewport, size, source, tiles]);
   const imageRequestKey = `${sourceKey}:${radarImages.map((image) => image.key).join("|")}`;
-  const imageReady = radarImages.length > 0 && loadedImageRequestKey === imageRequestKey;
+  const visibleObservation = radarImages.length > 0 && loadedObservation?.contextKey === imageContextKey
+    ? loadedObservation
+    : null;
+  const imageReady = visibleObservation?.requestKey === imageRequestKey;
   const imageError = imageFailure?.requestKey === imageRequestKey ? imageFailure.message : null;
 
   useEffect(() => {
@@ -117,12 +124,19 @@ export default function RadarPanel({
     return () => window.clearInterval(timer);
   }, [active, frames.length, imageReady, mapVisible, pageVisible, playing, reducedMotion, sourceKey]);
 
-  const observed = frame ? frameTime(frame.validAt, timezone) : "Observation time unavailable";
+  const selectedObserved = frame ? frameTime(frame.validAt, timezone) : "Observation time unavailable";
+  const observed = visibleObservation
+    ? frameTime(visibleObservation.validAt, timezone)
+    : selectedObserved;
   const radarLabel = imageError
-    ? `${providerLabel} radar imagery for ${place.name} could not be loaded.`
-    : frame
+    ? visibleObservation
+      ? `${providerLabel} radar for ${place.name} is showing the retained observation from ${observed}; the selected replacement could not be loaded.`
+      : `${providerLabel} radar imagery for ${place.name} could not be loaded.`
+    : visibleObservation
       ? `${providerLabel} radar observation for ${place.name}. Observed ${observed}.`
-      : `${providerLabel} radar for ${place.name} is unavailable.`;
+      : frame
+        ? `${providerLabel} radar for ${place.name} is loading the selected observation from ${selectedObserved}.`
+        : `${providerLabel} radar for ${place.name} is unavailable.`;
 
   const overlay = overlayHost ? createPortal(
     <div className="absolute inset-0 z-10 pointer-events-none" hidden={!active} data-testid="radar-overlay">
@@ -140,7 +154,13 @@ export default function RadarPanel({
             });
           }}
           onLayerLoad={() => {
-            setLoadedImageRequestKey(imageRequestKey);
+            if (frame) {
+              setLoadedObservation({
+                contextKey: imageContextKey,
+                requestKey: imageRequestKey,
+                validAt: frame.validAt,
+              });
+            }
             setImageFailure((current) =>
               current?.requestKey === imageRequestKey ? null : current
             );
@@ -191,7 +211,13 @@ export default function RadarPanel({
             {playing ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
             {playing ? "Pause" : "Play"}
           </button>
-          <span className="truncate font-medium" aria-live={playing ? "off" : "polite"}>{observed}</span>
+          <span
+            className="truncate font-medium"
+            aria-live={playing ? "off" : "polite"}
+            data-testid="radar-observed-time"
+          >
+            {observed}
+          </span>
           <span className="col-span-2 text-white/60 sm:col-span-1" data-testid="radar-source">
             {provider === "unavailable" ? "Country unknown · radar provider not selected" : `${providerLabel} · observed, not forecast`}
           </span>
@@ -208,7 +234,7 @@ export default function RadarPanel({
           }}
           className="w-full min-h-11 accent-white"
           aria-label="Radar observation time"
-          aria-valuetext={observed}
+          aria-valuetext={selectedObserved}
           data-testid="radar-time"
         />
         <div className="mt-1 min-h-5 text-[11px] text-white/62">
