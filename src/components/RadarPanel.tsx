@@ -83,8 +83,8 @@ export default function RadarPanel({
     if (reducedMotion) setPlaying(false);
   }, [reducedMotion]);
 
-  const tiles = useMemo(() => visibleTiles(viewport), [viewport]);
-  const imageViewport = source?.provider === "noaa-mrms" ? settledViewport : viewport;
+  const tiles = useMemo(() => visibleTiles(settledViewport), [settledViewport]);
+  const imageViewport = settledViewport;
   const imageContextKey = [
     provider,
     place.lat,

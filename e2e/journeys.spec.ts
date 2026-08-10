@@ -663,6 +663,43 @@ test("settles a NOAA overlay once after a multi-event map drag", async ({ page }
   await expect.poll(() => imageRequests, { timeout: 15_000 }).toBe(2);
 });
 
+test("settles RainViewer tiles until a multi-event map drag finishes", async ({ page }) => {
+  await page.clock.install();
+  await page.unroute("**/tilecache.rainviewer.com/**");
+  let tileRequests = 0;
+  await page.route("**/tilecache.rainviewer.com/**", (route) => {
+    tileRequests += 1;
+    return route.fulfill({
+      contentType: "image/png",
+      headers: { "Cache-Control": "no-store" },
+      body: transparentPixel,
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("combobox").fill("Tokyo");
+  await page.getByRole("option").first().click();
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect(page.getByTestId("radar-source")).toContainText("RainViewer", { timeout: 15_000 });
+  await expect.poll(() => tileRequests).toBeGreaterThan(0);
+  await expect.poll(() => page.locator('img[data-radar-layer="loaded"]').count()).toBeGreaterThan(0);
+  const loadedRequests = tileRequests;
+
+  const viewport = page.getByTestId("forecast-map-viewport");
+  const box = await viewport.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await viewport.focus();
+  for (let press = 0; press < 5; press += 1) await viewport.press("ArrowRight");
+
+  expect(tileRequests).toBe(loadedRequests);
+  await page.clock.runFor(250);
+  await expect.poll(() => tileRequests, { timeout: 15_000 }).toBeGreaterThan(loadedRequests);
+});
+
 test("drops a geographically stale NOAA layer and retries a failed image replacement", async ({ page }) => {
   let initialImageUrl: string | null = null;
   let replacementImageUrl: string | null = null;

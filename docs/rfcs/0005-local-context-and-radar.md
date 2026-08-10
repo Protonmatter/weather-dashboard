@@ -75,12 +75,12 @@ acquisition timestamp, so changing locations cannot postpone provider refresh in
 When Forecast is active, the last complete radar layer remains in memory but no candidate
 imagery is requested; a current-viewport replacement begins only when Radar is selected again.
 
-NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box, a fixed
-frame time, transparency, and an image size capped at 4096 pixels per dimension. Viewport
-changes settle for 200 milliseconds before swapping the image, and antimeridian-crossing
-longitudes are normalised into one ordered projected extent. The shared map raises its
-minimum zoom on wide layouts so the visible viewport never spans more than one projected
-world and NOAA imagery retains the same longitude scale as base tiles. RainViewer
+Viewport changes settle for 200 milliseconds before either provider rebuilds candidate
+imagery. NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box,
+a fixed frame time, transparency, and an image size capped at 4096 pixels per dimension.
+Antimeridian-crossing longitudes are normalised into one ordered projected extent. The shared
+map raises its minimum zoom on wide layouts so the visible viewport never spans more than
+one projected world and NOAA imagery retains the same longitude scale as base tiles. RainViewer
 accepts only `https://tilecache.rainviewer.com`, validates frame paths against the documented
 `/v2/radar/<id>` shape, rejects traversal/query material, and caps tiles at zoom 7.
 
