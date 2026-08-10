@@ -49,4 +49,11 @@ describe("location time", () => {
   it("rejects an invalid provider timezone", () => {
     expect(() => assertTimeZone("Mars/Olympus_Mons")).toThrow("forecast: invalid timezone");
   });
+
+  it("rejects missing or empty provider timezones", () => {
+    expect(() => assertTimeZone(undefined)).toThrow("forecast: invalid timezone");
+    expect(() => assertTimeZone(null)).toThrow("forecast: invalid timezone");
+    expect(() => assertTimeZone("")).toThrow("forecast: invalid timezone");
+    expect(() => assertTimeZone("   ")).toThrow("forecast: invalid timezone");
+  });
 });

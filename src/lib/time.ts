@@ -1,5 +1,8 @@
 /** Validate a provider-supplied IANA timezone before it reaches UI formatters. */
-export function assertTimeZone(value: string): string {
+export function assertTimeZone(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("forecast: invalid timezone");
+  }
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format(0);
   } catch {
@@ -87,6 +90,11 @@ function zonedParts(date: Date, timeZone: string): ZonedParts {
     hour: value("hour"),
     minute: value("minute"),
   };
+}
+
+/** Return the 0-23 wall-clock hour for an instant in an IANA timezone. */
+export function hourInTimeZone(date: Date, timeZone: string): number {
+  return zonedParts(date, timeZone).hour;
 }
 
 /** Construct a real instant from a wall time in an IANA timezone, independent of the viewer timezone. */

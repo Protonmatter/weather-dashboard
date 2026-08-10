@@ -1,5 +1,5 @@
 import { ensembleStats, synthMembers } from "./ensemble";
-import { dateAtLocalTime } from "./time";
+import { dateAtLocalTime, hourInTimeZone } from "./time";
 import type { WeatherBundle } from "./types";
 
 const FALLBACK_TIMEZONE = "America/Los_Angeles";
@@ -20,10 +20,11 @@ export function fallbackBundle(): WeatherBundle {
   const now = new Date();
   const base = new Date(now);
   base.setMinutes(0, 0, 0);
+  const currentHour = hourInTimeZone(now, FALLBACK_TIMEZONE);
 
   const hourly = HOUR_TEMPS.map((temp, i) => {
     const time = new Date(base.getTime() + i * 3600e3);
-    const h = time.getHours();
+    const h = hourInTimeZone(time, FALLBACK_TIMEZONE);
     return {
       time,
       temp,
@@ -53,7 +54,7 @@ export function fallbackBundle(): WeatherBundle {
       temp: 67,
       feels: 63,
       code: 61,
-      isDay: true,
+      isDay: currentHour >= 7 && currentHour < 18,
       humidity: 84,
       wind: 6,
       visibility: 7.2,

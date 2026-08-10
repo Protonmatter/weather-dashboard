@@ -16,4 +16,16 @@ describe("fallback forecast timezone", () => {
     expect(formatLocalTime(today.sunrise!, bundle.timezone)).toBe("7:04 AM");
     expect(formatLocalTime(today.sunset!, bundle.timezone)).toBe("5:12 PM");
   });
+
+  it("derives fallback day flags in the declared location timezone", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:30:00Z"));
+
+    const bundle = fallbackBundle();
+
+    expect(formatLocalTime(bundle.hourly[0]!.time, bundle.timezone)).toBe("5:00 AM");
+    expect(bundle.current.isDay).toBe(false);
+    expect(bundle.hourly[0]!.isDay).toBe(false);
+    expect(bundle.hourly[2]!.isDay).toBe(true);
+  });
 });

@@ -34,7 +34,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
   two minutes from its original network acquisition time. Radar chunk failures stay inside
   radar mode; wide maps enforce a one-world minimum zoom, and imagery failures retain the
-  last complete layer with its matching observation time and expose an explicit retry.
+  last complete layer only for the same viewport, with its matching observation time, and
+  expose an explicit retry.
   Both timelines are independently
   scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h

@@ -82,7 +82,8 @@ Both providers retain visible attribution. The UI distinguishes observed radar f
 precipitation and states that a blank layer can mean no precipitation or no radar coverage.
 Image sets become visible only after the complete layer loads. A failed replacement retains
 the prior successful layer and its matching observation time when it belongs to the same
-place, exposes an imagery retry, and pauses playback until a complete replacement loads.
+place and viewport, exposes an imagery retry, and pauses playback until a complete replacement
+loads. A pan, zoom, or resize removes a prior-viewport layer if its replacement fails.
 
 ## 5. Failure and verification
 
@@ -94,7 +95,8 @@ Deterministic tests cover timezone/DST formatting, Open-Meteo schema parsing, lo
 accumulation, scene classification, provider selection, NOAA frame de-duplication, RainViewer
 origin/path validation, antimeridian extents, and bounded image URLs. Production-build browser
 journeys cover lazy network dormancy, U.S. NOAA selection, global RainViewer selection, radar
-catalogue refresh and acquisition timestamps, settled/retained NOAA image swaps, scoped lazy
+catalogue refresh and acquisition timestamps, settled/retained NOAA image swaps and
+prior-viewport rejection, scoped lazy
 chunk failure, imagery retry, local clock changes, forecast/radar switching, mobile interaction,
 and reduced-motion playback and scenes. Nightly live
 contracts exercise both radar catalogues and representative imagery in addition to the

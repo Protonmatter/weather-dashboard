@@ -74,7 +74,6 @@ export default function RadarPanel({
     : provider === "rainviewer"
       ? "RainViewer"
       : "Radar unavailable";
-  const imageContextKey = `${provider}:${place.lat}:${place.lon}`;
 
   useEffect(() => {
     setPlaying(false);
@@ -85,6 +84,17 @@ export default function RadarPanel({
   }, [reducedMotion]);
 
   const tiles = useMemo(() => visibleTiles(viewport), [viewport]);
+  const imageViewport = source?.provider === "noaa-mrms" ? settledViewport : viewport;
+  const imageContextKey = [
+    provider,
+    place.lat,
+    place.lon,
+    imageViewport.center.lat,
+    imageViewport.center.lon,
+    imageViewport.zoom,
+    imageViewport.width,
+    imageViewport.height,
+  ].join(":");
   const radarImages = useMemo<RadarImageSpec[]>(() => {
     if (source?.provider === "noaa-mrms" && frame && size.width > 0 && size.height > 0) {
       const src = noaaImageUrl(frame, settledViewport, size);

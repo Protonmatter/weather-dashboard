@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseEnsembleResponse, parseForecastResponse } from "../providers/openMeteo";
+import {
+  parseEnsembleResponse,
+  parseForecastResponse,
+  type ForecastResponse,
+} from "../providers/openMeteo";
 
 const response = () => ({
   timezone: "America/Los_Angeles",
@@ -96,6 +100,14 @@ describe("Open-Meteo point forecast parser", () => {
   it("fails closed on an invalid provider timezone", () => {
     const malformed = response();
     malformed.timezone = "Mars/Olympus_Mons";
+
+    expect(() => parseForecastResponse(malformed, 1_786_291_200_000)).toThrow(
+      "forecast: invalid timezone"
+    );
+  });
+
+  it("fails closed when the provider timezone is missing", () => {
+    const malformed = { ...response(), timezone: undefined } as unknown as ForecastResponse;
 
     expect(() => parseForecastResponse(malformed, 1_786_291_200_000)).toThrow(
       "forecast: invalid timezone"

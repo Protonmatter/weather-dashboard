@@ -634,7 +634,7 @@ test("settles a NOAA overlay once after a multi-event map drag", async ({ page }
   await expect.poll(() => imageRequests, { timeout: 15_000 }).toBe(2);
 });
 
-test("retains the loaded NOAA layer and retries a failed image replacement", async ({ page }) => {
+test("drops a geographically stale NOAA layer and retries a failed image replacement", async ({ page }) => {
   let initialImageUrl: string | null = null;
   let replacementImageUrl: string | null = null;
   let replacementAttempts = 0;
@@ -672,10 +672,11 @@ test("retains the loaded NOAA layer and retries a failed image replacement", asy
   const retry = page.getByRole("button", { name: "Retry radar imagery" });
   await expect.poll(() => replacementAttempts, { timeout: 15_000 }).toBe(1);
   await expect(retry).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1);
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(0);
   await retry.click();
   await expect(retry).toBeHidden({ timeout: 15_000 });
   await expect.poll(() => replacementAttempts).toBe(2);
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1);
 });
 
 test("retries NOAA radar failure without silently switching providers", async ({ page }) => {
