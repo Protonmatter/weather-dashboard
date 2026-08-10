@@ -16,6 +16,8 @@ Radar source selection is explicit and deterministic:
   ImageServer.
 - Every other country code uses RainViewer's public weather-maps API, which is restricted to
   non-commercial use in this project.
+- A missing country code leaves radar explicitly unavailable; it is never interpreted as
+  non-U.S. coverage.
 - A NOAA failure is shown as a NOAA failure. The application does not silently switch a U.S.
   user to RainViewer because doing so would conceal a source and terms change.
 
@@ -33,9 +35,11 @@ codes provide a fallback when the interval amount is absent or zero.
 The metric strip deliberately separates:
 
 - **Rain today:** sum of Open-Meteo hourly precipitation estimates through the current
-  provider timestamp within the location's local calendar day. This is not a rain gauge.
-- **Next 24h rain:** ensemble median accumulation, with p10–p90 and member count in the
-  expanded detail.
+  provider timestamp within the location's local calendar day. Hour-ending totals at exactly
+  local midnight belong to the preceding day. This is not a rain gauge.
+- **Next 24h rain:** live ensemble accumulation includes p10–p90 and member count. When the
+  ensemble provider is unavailable, the deterministic fallback is labelled as a modeled
+  estimate and never described as live ensemble uncertainty.
 
 ## 3. Interaction and accessibility
 
@@ -51,17 +55,21 @@ base tiles, and the selected-place marker are shared. Each mode owns its timelin
 modes does not reinterpret forecast hours as observation frames.
 
 Animation stops when reduced motion is requested, when the map is offscreen, or when the page
-is hidden. Manual sliders remain available. Background particles are deterministic and
-bounded; no random particle churn occurs during React renders.
+is hidden. Manual sliders remain available. Reduced motion also disables star, cloud, and fog
+animations. Background particles are deterministic and bounded; no random particle churn
+occurs during React renders.
 
 ## 4. Radar lifecycle and safety
 
 Radar provider code is split into a second lazy chunk. Neither metadata endpoint is contacted
 until the user first selects Radar. Requests use the common abort, timeout, transient retry,
-circuit-breaker, and two-minute response-cache boundary.
+circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
+revalidation when that freshness window expires.
 
 NOAA image requests use a fixed service origin, a Web Mercator viewport bounding box, a fixed
-frame time, transparency, and an image size capped at 4096 pixels per dimension. RainViewer
+frame time, transparency, and an image size capped at 4096 pixels per dimension. Viewport
+changes settle for 200 milliseconds before swapping the image, and antimeridian-crossing
+longitudes are normalised into one ordered projected extent. RainViewer
 accepts only `https://tilecache.rainviewer.com`, validates frame paths against the documented
 `/v2/radar/<id>` shape, rejects traversal/query material, and caps tiles at zoom 7.
 
@@ -76,8 +84,9 @@ prevent late responses from replacing the current place.
 
 Deterministic tests cover timezone/DST formatting, Open-Meteo schema parsing, local-day
 accumulation, scene classification, provider selection, NOAA frame de-duplication, RainViewer
-origin/path validation, and bounded image URLs. Production-build browser journeys cover lazy
-network dormancy, U.S. NOAA selection, global RainViewer selection, local clock changes,
-forecast/radar switching, mobile interaction, and reduced-motion playback. Nightly live
+origin/path validation, antimeridian extents, and bounded image URLs. Production-build browser
+journeys cover lazy network dormancy, U.S. NOAA selection, global RainViewer selection, radar
+catalogue refresh, settled NOAA image swaps, local clock changes, forecast/radar switching,
+mobile interaction, and reduced-motion playback and scenes. Nightly live
 contracts exercise both radar catalogues and representative imagery in addition to the
 weather providers.

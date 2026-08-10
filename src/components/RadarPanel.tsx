@@ -12,6 +12,7 @@ import type { Place } from "../lib/types";
 
 const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
 const PLAYBACK_INTERVAL_MS = 900;
+const NOAA_VIEWPORT_SETTLE_MS = 200;
 
 interface RadarPanelProps {
   place: Place;
@@ -29,6 +30,15 @@ function frameTime(date: Date, timezone: string): string {
   return `${formatLocalTime(date, timezone)} ${timezoneLabel(date, timezone)} · ${formatLocalDate(date, timezone)}`;
 }
 
+function useSettledViewport(viewport: MapViewport): MapViewport {
+  const [settled, setSettled] = useState(viewport);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(viewport), NOAA_VIEWPORT_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [viewport]);
+  return settled;
+}
+
 export default function RadarPanel({
   place,
   timezone,
@@ -41,6 +51,7 @@ export default function RadarPanel({
   pageVisible,
 }: RadarPanelProps) {
   const { state, source, retry } = useRadar(place, true);
+  const settledViewport = useSettledViewport(viewport);
   const [selection, setSelection] = useState<{ sourceKey: string; index: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const frames = source?.frames ?? [];
@@ -50,7 +61,11 @@ export default function RadarPanel({
     : Math.max(0, frames.length - 1);
   const frame = frames[timeIndex] ?? null;
   const provider = radarProviderFor(place);
-  const providerLabel = provider === "noaa-mrms" ? "NOAA / NWS MRMS" : "RainViewer";
+  const providerLabel = provider === "noaa-mrms"
+    ? "NOAA / NWS MRMS"
+    : provider === "rainviewer"
+      ? "RainViewer"
+      : "Radar unavailable";
 
   useEffect(() => {
     setPlaying(false);
@@ -81,8 +96,8 @@ export default function RadarPanel({
     <div className="absolute inset-0 z-10 pointer-events-none" hidden={!active} data-testid="radar-overlay">
       {source?.provider === "noaa-mrms" && frame && size.width > 0 && (
         <img
-          key={`${frame.id}:${viewport.center.lat}:${viewport.center.lon}:${viewport.zoom}:${size.width}:${size.height}`}
-          src={noaaImageUrl(frame, viewport, size)}
+          key={`${frame.id}:${settledViewport.center.lat}:${settledViewport.center.lon}:${settledViewport.zoom}:${size.width}:${size.height}`}
+          src={noaaImageUrl(frame, settledViewport, size)}
           alt=""
           aria-hidden="true"
           className="absolute inset-0 h-full w-full object-fill"
@@ -146,7 +161,7 @@ export default function RadarPanel({
           </button>
           <span className="truncate font-medium" aria-live={playing ? "off" : "polite"}>{observed}</span>
           <span className="col-span-2 text-white/60 sm:col-span-1" data-testid="radar-source">
-            {providerLabel} · observed, not forecast
+            {provider === "unavailable" ? "Country unknown · radar provider not selected" : `${providerLabel} · observed, not forecast`}
           </span>
         </div>
         <input
@@ -173,7 +188,8 @@ export default function RadarPanel({
               </button>
             </span>
           )}
-          {source?.coverage === "unavailable" && "No radar frames are currently available for this provider."}
+          {source?.provider === "unavailable" && "Radar is unavailable because the location country could not be determined. Search by city or postal code to select the correct provider."}
+          {source?.provider !== "unavailable" && source?.coverage === "unavailable" && "No radar frames are currently available for this provider."}
           {source?.coverage === "available" && (
             <span>
               Coverage varies; a blank layer can mean no precipitation or no radar coverage. Data by{" "}

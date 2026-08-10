@@ -1,11 +1,8 @@
 import { ensembleStats, synthMembers } from "./ensemble";
+import { dateAtLocalTime } from "./time";
 import type { WeatherBundle } from "./types";
 
-const at = (d: Date, h: number, m: number): Date => {
-  const x = new Date(d);
-  x.setHours(h, m, 0, 0);
-  return x;
-};
+const FALLBACK_TIMEZONE = "America/Los_Angeles";
 
 const HOUR_TEMPS = [67, 66, 65, 66, 68, 70, 69, 66, 62, 59, 57, 56, 55, 54, 54, 54, 54, 55, 56, 58, 61, 64, 68, 71];
 const HOUR_CODES = [61, 61, 61, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0];
@@ -38,9 +35,16 @@ export function fallbackBundle(): WeatherBundle {
   });
 
   const daily = DAY_ROWS.map(([low, high, code], i) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() + i);
-    return { date, low, high, code, uv: 3, sunrise: at(date, 7, 4), sunset: at(date, 17, 12) };
+    const date = dateAtLocalTime(now, FALLBACK_TIMEZONE, 12, 0, i);
+    return {
+      date,
+      low,
+      high,
+      code,
+      uv: 3,
+      sunrise: dateAtLocalTime(now, FALLBACK_TIMEZONE, 7, 4, i),
+      sunset: dateAtLocalTime(now, FALLBACK_TIMEZONE, 17, 12, i),
+    };
   });
 
   return {
@@ -63,7 +67,7 @@ export function fallbackBundle(): WeatherBundle {
     aqi: 28,
     ensemble: { ...ensembleStats(synthMembers(HOUR_POP)), source: "modeled spread", live: false },
     live: false,
-    timezone: "America/Los_Angeles",
+    timezone: FALLBACK_TIMEZONE,
     timezoneAbbreviation: "PST/PDT",
     utcOffsetSeconds: -28_800,
     updatedAt: now,

@@ -21,6 +21,10 @@ describe("radar provider boundary", () => {
     expect(radarProviderFor(place("jp"))).toBe("rainviewer");
   });
 
+  it("does not silently assign a global provider when the country is unknown", () => {
+    expect(radarProviderFor(place(""))).toBe("unavailable");
+  });
+
   it("sorts and deduplicates NOAA regional records by valid time", () => {
     const source = parseNoaaFrames({
       features: [
@@ -106,5 +110,21 @@ describe("radar provider boundary", () => {
       "https://tilecache.rainviewer.com",
       { z: 7, x: 12, y: 34 }
     )).toBe("https://tilecache.rainviewer.com/v2/radar/a/256/7/12/34/2/1_1.png");
+  });
+
+  it("keeps a NOAA bbox ordered when the viewport crosses the antimeridian", () => {
+    const url = new URL(noaaImageUrl(
+      { id: "100000", validAt: new Date(100_000) },
+      {
+        center: { lat: 20, lon: 179 },
+        zoom: 2,
+        width: 800,
+        height: 500,
+      },
+      { width: 800, height: 500 }
+    ));
+    const bbox = url.searchParams.get("bbox")!.split(",").map(Number);
+
+    expect(bbox[0]).toBeLessThan(bbox[2]!);
   });
 });

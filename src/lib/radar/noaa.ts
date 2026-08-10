@@ -63,13 +63,28 @@ function webMercator(point: { lat: number; lon: number }): { x: number; y: numbe
   return { x, y };
 }
 
+function longitudeNear(lon: number, reference: number): number {
+  let candidate = lon;
+  while (candidate - reference > 180) candidate -= 360;
+  while (candidate - reference < -180) candidate += 360;
+  return candidate;
+}
+
 export function noaaImageUrl(
   frame: RadarFrame,
   viewport: MapViewport,
   size: { width: number; height: number }
 ): string {
-  const northWest = webMercator(screenToGeo({ x: 0, y: 0 }, viewport));
-  const southEast = webMercator(screenToGeo({ x: viewport.width, y: viewport.height }, viewport));
+  const northWestGeo = screenToGeo({ x: 0, y: 0 }, viewport);
+  const southEastGeo = screenToGeo({ x: viewport.width, y: viewport.height }, viewport);
+  const northWest = webMercator({
+    ...northWestGeo,
+    lon: longitudeNear(northWestGeo.lon, viewport.center.lon),
+  });
+  const southEast = webMercator({
+    ...southEastGeo,
+    lon: longitudeNear(southEastGeo.lon, viewport.center.lon),
+  });
   const width = Math.min(4096, Math.max(1, Math.round(size.width)));
   const height = Math.min(4096, Math.max(1, Math.round(size.height)));
   const url = new URL(`${SERVICE}/exportImage`);

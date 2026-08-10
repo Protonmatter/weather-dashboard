@@ -208,6 +208,19 @@ test("previews and pins weather metric details with keyboard parity", async ({ p
   expect(await metrics.evaluate((node, mapNode) => Boolean(node.compareDocumentPosition(mapNode as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await map.elementHandle())).toBe(true);
 });
 
+test("does not present modeled precipitation spread as a live ensemble", async ({ page }) => {
+  await page.unroute("**/ensemble-api.open-meteo.com/**");
+  await page.route("**/ensemble-api.open-meteo.com/**", (route) => route.abort());
+  await page.goto("/");
+  await expect(page.getByText(/Live data from Open-Meteo · modeled spread/)).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("weather-metric-rain-next").click();
+  const detail = page.getByTestId("weather-metric-detail");
+  await expect(detail).toContainText("modeled estimate");
+  await expect(detail).toContainText("Live ensemble data are unavailable");
+  await expect(detail).not.toContainText("across 31 members");
+});
+
 test("opens the same persistent weather detail with a tap", async ({ page }) => {
   await page.goto("/");
 
@@ -362,6 +375,74 @@ test("keeps radar playback manual when reduced motion is enabled", async ({ page
   const initial = await page.getByTestId("radar-time").inputValue();
   await page.waitForTimeout(1_200);
   await expect(page.getByTestId("radar-time")).toHaveValue(initial);
+});
+
+test("disables all continuous backdrop motion when reduced motion is enabled", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  const animationNames = await page.evaluate(() => {
+    const fixture = document.createElement("div");
+    fixture.innerHTML = [
+      '<div class="scene-stars"><i></i></div>',
+      '<div class="scene-clouds"><span></span></div>',
+      '<div class="scene-fog"></div>',
+    ].join("");
+    document.body.append(fixture);
+    const names = [
+      fixture.querySelector(".scene-stars i"),
+      fixture.querySelector(".scene-clouds span"),
+      fixture.querySelector(".scene-fog"),
+    ].map((element) => getComputedStyle(element!).animationName);
+    fixture.remove();
+    return names;
+  });
+
+  expect(animationNames).toEqual(["none", "none", "none"]);
+});
+
+test("refreshes the radar catalogue after its two-minute freshness window", async ({ page }) => {
+  await page.clock.install();
+  let catalogueRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/query")) {
+      catalogueRequests += 1;
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  await expect.poll(() => catalogueRequests, { timeout: 15_000 }).toBe(1);
+
+  await page.clock.runFor(120_500);
+  await expect.poll(() => catalogueRequests, { timeout: 15_000 }).toBe(2);
+});
+
+test("settles a NOAA overlay once after a multi-event map drag", async ({ page }) => {
+  let imageRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/exportImage")) {
+      imageRequests += 1;
+    }
+  });
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Radar observations" }).click();
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await expect(page.getByTestId("radar-noaa-image")).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => imageRequests).toBe(1);
+
+  const box = await viewport.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2, { steps: 12 });
+  await page.mouse.up();
+
+  await expect.poll(() => imageRequests, { timeout: 15_000 }).toBe(2);
 });
 
 test("retries NOAA radar failure without silently switching providers", async ({ page }) => {

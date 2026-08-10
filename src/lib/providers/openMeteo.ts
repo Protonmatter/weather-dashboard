@@ -110,7 +110,8 @@ export function parseForecastResponse(w: ForecastResponse, nowMs = Date.now()): 
   const today = localDateKey(updatedAt, timezone);
   const rainTodayIn = w.hourly.time.reduce((total, seconds, i) => {
     const time = instant(seconds, "hourly time");
-    return time && time <= updatedAt && localDateKey(time, timezone) === today
+    const intervalDay = time ? localDateKey(new Date(time.getTime() - 1), timezone) : "";
+    return time && time <= updatedAt && intervalDay === today
       ? total + (w.hourly.precipitation[i] ?? 0)
       : total;
   }, 0);

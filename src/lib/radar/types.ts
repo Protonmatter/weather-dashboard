@@ -1,4 +1,4 @@
-export type RadarProviderId = "noaa-mrms" | "rainviewer";
+export type RadarProviderId = "noaa-mrms" | "rainviewer" | "unavailable";
 
 export interface RadarFrame {
   id: string;

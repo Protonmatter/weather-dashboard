@@ -58,8 +58,12 @@ export function WeatherMetrics({ current, uv, rainTodayIn, ensemble, placeKey }:
       id: "rain-next",
       label: "Next 24h rain",
       value: `${ensemble.t50.toFixed(2)} in`,
-      preview: `${ensemble.t50.toFixed(2)} inches ensemble median in the next 24 hours`,
-      detail: `The next-24-hour ensemble median is ${ensemble.t50.toFixed(2)} inches, with a 10th–90th percentile range of ${ensemble.t10.toFixed(2)}–${ensemble.t90.toFixed(2)} inches across ${ensemble.n} members.`,
+      preview: ensemble.live
+        ? `${ensemble.t50.toFixed(2)} inches ensemble median in the next 24 hours`
+        : `${ensemble.t50.toFixed(2)} inches modeled estimate in the next 24 hours`,
+      detail: ensemble.live
+        ? `The next-24-hour ensemble median is ${ensemble.t50.toFixed(2)} inches, with a 10th–90th percentile range of ${ensemble.t10.toFixed(2)}–${ensemble.t90.toFixed(2)} inches across ${ensemble.n} members.`
+        : `The modeled estimate for the next 24 hours is ${ensemble.t50.toFixed(2)} inches. Live ensemble data are unavailable, so this deterministic fallback must not be interpreted as observed or ensemble uncertainty.`,
     },
     {
       id: "wind",

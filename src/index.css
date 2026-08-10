@@ -90,6 +90,7 @@ input::placeholder { color: rgba(255, 255, 255, 0.5); }
 @media (prefers-reduced-motion: reduce) {
   .rainlayer, .weather-particles { display: none; }
   .scene-storm-flash { display: none; }
+  .scene-stars i, .scene-clouds span, .scene-fog { animation: none; }
   .fadein { animation: none; }
 }
 

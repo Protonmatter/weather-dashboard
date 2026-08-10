@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { initialMapLoadState, mapLoadReducer } from "../lib/map/state";
+import { radarRefreshDelayMs } from "../lib/radar/cache";
 import { loadRadarSource, radarKey } from "../lib/radar/provider";
 import type { RadarSource } from "../lib/radar/types";
 import type { Place } from "../lib/types";
@@ -23,11 +24,18 @@ export function useRadar(place: Place, enabled: boolean) {
     }
 
     const controller = new AbortController();
+    let refreshTimer: number | undefined;
     dispatch({ type: "start", requestId: id });
     void loadRadarSource(place, controller.signal)
       .then((source) => {
         if (controller.signal.aborted || id !== requestId.current) return;
         dispatch({ type: "success", requestId: id, data: { key, source } });
+        const delay = radarRefreshDelayMs(source);
+        if (delay > 0 && source.provider !== "unavailable") {
+          refreshTimer = window.setTimeout(() => {
+            setRetryGeneration((value) => value + 1);
+          }, delay);
+        }
       })
       .catch(() => {
         if (controller.signal.aborted) {
@@ -41,7 +49,10 @@ export function useRadar(place: Place, enabled: boolean) {
         });
       });
 
-    return () => controller.abort();
+    return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      controller.abort();
+    };
   }, [enabled, key, retryGeneration]);
 
   const source = useMemo(

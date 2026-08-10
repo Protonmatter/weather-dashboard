@@ -31,7 +31,8 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 - **Observed radar mode** — the same map switches to recent radar observations without
   losing pan, zoom, or the selected-place marker. U.S. and territory locations use NOAA/NWS
   MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
-  calls remain dormant until the mode is selected. Both timelines are independently
+  calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
+  two minutes. Both timelines are independently
   scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
@@ -186,7 +187,8 @@ The map also renders visible attribution directly over its tile layer.
 Radar provider selection is deterministic from the selected place's ISO country code:
 `US`, `PR`, `VI`, `GU`, and `MP` use NOAA MRMS; all other codes use RainViewer. There is no
 silent fallback from NOAA to a global provider, so an outage cannot quietly change source
-or terms. RainViewer attribution remains visible in the radar detail area. A blank radar
+or terms. If the country code cannot be determined, radar fails closed as unavailable instead
+of silently assigning RainViewer. RainViewer attribution remains visible in the radar detail area. A blank radar
 layer can mean either no precipitation or no provider coverage; the UI says so rather than
 claiming a clear sky.
 

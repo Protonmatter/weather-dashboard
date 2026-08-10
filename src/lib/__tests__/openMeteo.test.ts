@@ -66,6 +66,18 @@ describe("Open-Meteo point forecast parser", () => {
     expect(parsed.daily[0]?.sunrise?.toISOString()).toBe("2026-08-09T13:30:00.000Z");
   });
 
+  it("attributes a midnight-ending precipitation interval to the previous local day", () => {
+    const midnight = Date.parse("2026-08-10T07:00:00Z") / 1000;
+    const fixture = response();
+    fixture.current.time = midnight + 5_400;
+    fixture.hourly.time = [midnight - 3_600, midnight, midnight + 3_600];
+    fixture.hourly.precipitation = [0.1, 0.2, 0.3];
+
+    const parsed = parseForecastResponse(fixture, (midnight + 5_400) * 1000);
+
+    expect(parsed.rainTodayIn).toBeCloseTo(0.3, 8);
+  });
+
   it("fails closed on an invalid provider timezone", () => {
     const malformed = response();
     malformed.timezone = "Mars/Olympus_Mons";
