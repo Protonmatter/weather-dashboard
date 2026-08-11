@@ -172,6 +172,9 @@ async function stubProviders(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("wx.location-onboarding.v1", JSON.stringify({ version: 1, complete: true }));
+  });
   await stubProviders(page);
 });
 

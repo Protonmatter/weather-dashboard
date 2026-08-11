@@ -12,6 +12,15 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   IANA timezone. Daylight-saving changes follow the place, not the viewer's computer. At
   local midnight, Rain today resets immediately and fresh point data is requested for the
   new day.
+- **Consent-first local weather** — first visits show **Use my location** and **Not now**.
+  The browser's native location prompt appears only after the first action is activated;
+  denial, timeout, unsupported-browser, and unavailable-position states keep manual search
+  and the Palo Alto live fallback usable.
+- **Saved locations and comparison** — Palo Alto, New York, and London seed a removable,
+  browser-local list. Save up to six places, switch the complete dashboard with one action,
+  or open Compare for current conditions, location-local time, high/low, rain, humidity,
+  UV, six hours, and three days. Compare is best on tablet or desktop, remains a stacked
+  single-column experience on phones, and any card opens that place's full dashboard.
 - **Inspectable weather details** — humidity, daily peak UV, estimated rain since local
   midnight, next-24-hour ensemble rain, wind, visibility, and pressure sit directly above
   the map. Hover or keyboard focus opens a compact tooltip; click, tap, or Enter pins the
@@ -85,9 +94,9 @@ hiccup cannot block an unrelated contributor.
 
 ```bash
 npm run typecheck   # static
-npm test            # unit, validation, regression — 267 tests
-npm run contract    # live provider schemas — 10 tests, network required
-npm run e2e         # functional journeys — 50 per browser project
+npm test            # unit, validation, regression — 298 tests
+npm run contract    # live provider schemas — 11 tests, network required
+npm run e2e         # functional journeys — 72 per browser project
 npm run smoke       # built artefact boots
 npm run deps        # audit + licence allow-list
 npm run size        # gzip budget
@@ -215,6 +224,25 @@ Opening the map sends its bounded coordinate grid to Open-Meteo and requests the
 tile range from the configured tile provider. Map grids are held only in a four-entry
 memory cache and are never written to the verification archive or `localStorage`.
 
+Comparison uses a separate, bounded Open-Meteo point-summary request for each saved place,
+with at most two requests active at once. It never requests ensemble, AQI, map, NOAA MRMS,
+or RainViewer data. Successful summaries remain in memory for ten minutes and revalidate
+when Compare reopens; failures stay within the affected card.
+
+## Location privacy and storage
+
+Geolocation is requested only after **Use my location** is activated. The resulting
+coordinates are sent to BigDataCloud for optional reverse geocoding and to Open-Meteo for
+weather. A detected or searched place is never saved automatically: **Save current
+location** is always explicit.
+
+Saved place metadata stays in this browser under `wx.saved-locations.v1`; the first-run
+decision is stored separately under `wx.location-onboarding.v1`. Weather responses and
+coordinates are not sent to an application backend, and there is no account, cookie,
+cross-device synchronization, or telemetry. Selecting Radar separately requests the visible
+map area under the provider policy described above. Clearing site data removes the saved
+list and onboarding choice; older app versions safely ignore both versioned keys.
+
 ## Search
 
 `parseQuery` inspects the input shape before dispatching, so one field handles everything:
@@ -258,6 +286,8 @@ src/
     map/             Web Mercator, grids, contours, H/L detection, rendering state
     radar/           NOAA/RainViewer selection, schema validation, bounded image URLs
     weather.ts       forecast assembly; ensembleFor() is the provider seam
+    locations/       validated browser-local saved-place persistence
+    comparison/      bounded point summaries and two-slot request scheduler
     verification/
       metrics.ts     Brier, Murphy decomposition, CRPS, rank histogram
       advanced.ts    spread–skill, Hersbach split, PIT, bootstrap, Diebold–Mariano
@@ -266,7 +296,7 @@ src/
     units.ts         conversion, colour ramp, formatting
     wmo.ts           WMO 4677 code decoding
     providers/       one adapter per external service, typed at the boundary
-  hooks/             search, forecast-map, and radar request lifecycles
+  hooks/             search, comparison, forecast-map, and radar request lifecycles
   components/        presentational only
 ```
 
@@ -296,9 +326,9 @@ build-time configuration, never search-box input.
 
 ```bash
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
-npm test            # 267 tests
+npm test            # 298 tests
 npm run build
-npm run size        # initial JS ≤70 kB; total JS ≤90 kB gzip
+npm run size        # initial JS ≤73 kB; total JS ≤96 kB gzip
 ```
 
 CI runs all four on every push and pull request.

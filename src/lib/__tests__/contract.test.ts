@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { noaaCatalogueUrl, noaaImageUrl, parseNoaaFrames } from "../radar/noaa";
 import { parseRainViewer, rainViewerTileUrl } from "../radar/rainViewer";
 import type { MapViewport } from "../map/types";
+import { comparisonUrl, parseComparisonResponse } from "../comparison/provider";
+import type { Place } from "../types";
 
 /**
  * Contract tests (RFC 0001 §4).
@@ -19,6 +21,14 @@ const enabled = process.env["RUN_CONTRACT_TESTS"] === "1";
 const d = enabled ? describe : describe.skip;
 const LAT = 37.44;
 const LON = -122.14;
+const PALO_ALTO: Place = {
+  lat: LAT,
+  lon: LON,
+  name: "Palo Alto",
+  admin: "California",
+  country: "United States",
+  cc: "us",
+};
 
 async function getJson<T = Record<string, unknown>>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -63,6 +73,29 @@ d("contract: Open-Meteo forecast", () => {
     expect(minutely["showers"]).toHaveLength(minutely["time"]!.length);
     expect(daily["time"]).toHaveLength(10);
     expect(daily["sunrise"]).toHaveLength(10);
+  }, 30_000);
+});
+
+d("contract: Open-Meteo comparison summary", () => {
+  it("returns the bounded Fahrenheit, inch, and Unix-time shape", async () => {
+    const j = await getJson<Record<string, unknown>>(comparisonUrl(PALO_ALTO));
+    const summary = parseComparisonResponse(j, PALO_ALTO);
+    const hourly = j["hourly"] as Record<string, unknown[]>;
+    const minutely = j["minutely_15"] as Record<string, unknown[]>;
+    const daily = j["daily"] as Record<string, unknown[]>;
+    const hourlyUnits = j["hourly_units"] as Record<string, string>;
+    const minutelyUnits = j["minutely_15_units"] as Record<string, string>;
+
+    expect(summary.hourly).toHaveLength(6);
+    expect(summary.daily).toHaveLength(3);
+    expect(hourly["time"]).toHaveLength(6);
+    expect(typeof hourly["time"]![0]).toBe("number");
+    expect(minutely["time"]).toHaveLength(105);
+    expect(daily["time"]).toHaveLength(3);
+    expect(hourlyUnits["temperature_2m"]).toContain("F");
+    expect(hourlyUnits["precipitation"]).toBe("inch");
+    expect(minutelyUnits["rain"]).toBe("inch");
+    expect(j["timezone"]).toMatch(/^[A-Za-z_]+\/[A-Za-z_+-]+/);
   }, 30_000);
 });
 
