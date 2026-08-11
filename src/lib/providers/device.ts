@@ -1,4 +1,4 @@
-import { fetchJson } from "../http";
+import { fetchJson, isAbort } from "../http";
 import type { Place } from "../types";
 
 interface ReverseResponse {
@@ -9,14 +9,45 @@ interface ReverseResponse {
   countryCode?: string;
 }
 
+export type DeviceLocationFailureKind =
+  | "denied"
+  | "timeout"
+  | "unavailable"
+  | "unsupported"
+  | "insecure"
+  | "unknown";
+
+export class DeviceLocationError extends Error {
+  constructor(
+    readonly kind: DeviceLocationFailureKind,
+    message: string
+  ) {
+    super(message);
+    this.name = "DeviceLocationError";
+  }
+}
+
+export function classifyDeviceLocationError(error: unknown): DeviceLocationError {
+  if (error instanceof DeviceLocationError) return error;
+  const code = error && typeof error === "object"
+    ? (error as { code?: unknown }).code
+    : undefined;
+  if (code === 1) return new DeviceLocationError("denied", "location permission denied");
+  if (code === 2) return new DeviceLocationError("unavailable", "location unavailable");
+  if (code === 3) return new DeviceLocationError("timeout", "location timeout");
+  return new DeviceLocationError("unknown", "location failed");
+}
+
 /** Browser geolocation plus reverse geocoding, so the header shows a name not coordinates. */
 export async function locateDevice(signal?: AbortSignal): Promise<Place> {
+  if (typeof window !== "undefined" && window.isSecureContext === false) {
+    throw new DeviceLocationError("insecure", "geolocation requires a secure context");
+  }
+  if (!navigator.geolocation) {
+    throw new DeviceLocationError("unsupported", "geolocation unsupported");
+  }
   const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("geolocation unsupported"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
+    navigator.geolocation.getCurrentPosition(resolve, (error) => reject(classifyDeviceLocationError(error)), {
       timeout: 10_000,
       maximumAge: 600_000,
     });
@@ -45,7 +76,8 @@ export async function locateDevice(signal?: AbortSignal): Promise<Place> {
       country: j.countryName ?? "",
       cc: (j.countryCode ?? "").toLowerCase(),
     };
-  } catch {
+  } catch (error) {
+    if (isAbort(error)) throw error;
     // Reverse geocoding is cosmetic. Coordinates alone still produce a valid forecast.
     return base;
   }

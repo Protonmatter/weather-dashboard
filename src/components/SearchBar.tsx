@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { Search, X, Loader2, MapPin, RefreshCw } from "lucide-react";
 import { glass } from "./Card";
 import { flag } from "../lib/units";
@@ -13,6 +13,8 @@ interface Props {
   onOpen: (open: boolean) => void;
   onPick: (p: Place) => void;
   onLocate: () => void;
+  locating: boolean;
+  inputRef: RefObject<HTMLInputElement>;
   onRefresh: () => void;
   refreshing: boolean;
   unit: "F" | "C";
@@ -41,6 +43,7 @@ export function SearchBar(p: Props) {
         <div className="flex items-center gap-2 rounded-full px-3.5 py-2" style={pill}>
           <Search size={15} style={{ color: "rgba(255,255,255,0.6)" }} />
           <input
+            ref={p.inputRef}
             value={p.query}
             onChange={(e) => p.onQuery(e.target.value)}
             onFocus={() => p.results.length && p.onOpen(true)}
@@ -99,8 +102,15 @@ export function SearchBar(p: Props) {
         )}
       </div>
 
-      <button onClick={p.onLocate} className="rounded-full p-2.5" style={pill} aria-label="Use my location" title="Use my location">
-        <MapPin size={15} />
+      <button
+        onClick={p.onLocate}
+        disabled={p.locating}
+        className="rounded-full p-2.5 disabled:opacity-60"
+        style={pill}
+        aria-label={p.locating ? "Finding your location" : "Use my location"}
+        title={p.locating ? "Finding your location" : "Use my location"}
+      >
+        {p.locating ? <Loader2 size={15} className="animate-spin" /> : <MapPin size={15} />}
       </button>
       <button
         onClick={p.onUnit}
