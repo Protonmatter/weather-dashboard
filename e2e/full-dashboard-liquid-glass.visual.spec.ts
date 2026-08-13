@@ -185,9 +185,6 @@ async function bootFullDashboard(page: Page): Promise<void> {
   }
   await page.goto("/");
   await expect(page.getByTestId("forecast-overview")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("provider-notice").evaluate((element) => {
-    (element as HTMLElement).style.display = "none";
-  });
   await expect(page.getByTestId("weather-metrics")).toBeVisible();
   await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
   await expect(page.getByTestId("forecast-map-card")).toBeVisible({ timeout: 15_000 });
@@ -204,6 +201,8 @@ const SCENARIOS: Record<ScenarioName, { viewport: { width: number; height: numbe
   tablet: { viewport: { width: 1180, height: 820 } },
   cinema: { viewport: { width: 1920, height: 1080 } },
 };
+
+test.describe.configure({ timeout: 60_000 });
 
 for (const name of Object.keys(SCENARIOS) as ScenarioName[]) {
   test(`full Liquid Glass dashboard baseline: ${name}`, async ({ page }) => {

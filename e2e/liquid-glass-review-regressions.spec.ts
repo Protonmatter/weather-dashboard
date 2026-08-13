@@ -32,10 +32,12 @@ async function bootFallbackDashboard(page: Page): Promise<void> {
 }
 
 test("primary onboarding action keeps dark text on an opaque hover surface", async ({
-  browserName,
   page,
-}) => {
-  test.skip(browserName !== "chromium", "Computed hover contract is covered once in Chromium");
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "chromium",
+    "Computed hover contract is covered once in desktop Chromium"
+  );
   await abortProviders(page);
   await page.goto("/");
 
@@ -44,35 +46,41 @@ test("primary onboarding action keeps dark text on an opaque hover surface", asy
     .getByRole("button", { name: "Use my location", exact: true });
   await button.hover();
 
-  const style = await button.evaluate((element) => {
-    const computed = getComputedStyle(element);
-    return {
-      background: computed.backgroundColor,
-      color: computed.color,
-    };
-  });
-  expect(style.background).toBe("rgb(255, 255, 255)");
-  expect(style.color).toBe("rgb(15, 23, 42)");
+  await expect
+    .poll(() =>
+      button.evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+    .toBe("rgb(255, 255, 255)");
+  await expect
+    .poll(() =>
+      button.evaluate((element) => getComputedStyle(element).color)
+    )
+    .toBe("rgb(15, 23, 42)");
 });
 
 test("solid-mode controls stay opaque while hovered", async ({
-  browserName,
   page,
-}) => {
-  test.skip(browserName !== "chromium", "Computed hover contract is covered once in Chromium");
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "chromium",
+    "Computed hover contract is covered once in desktop Chromium"
+  );
   await bootFallbackDashboard(page);
-  const app = page.getByTestId("weather-app");
-  await app.evaluate((element) => element.setAttribute("data-glass-mode", "solid"));
+  await page.evaluate(() =>
+    document.documentElement.setAttribute("data-glass-mode", "solid")
+  );
 
   const surface = page.getByRole("combobox").locator("..");
-  const before = await surface.evaluate(
-    (element) => getComputedStyle(element).backgroundColor
-  );
-  await surface.hover();
-  const after = await surface.evaluate(
-    (element) => getComputedStyle(element).backgroundColor
-  );
+  await expect
+    .poll(() =>
+      surface.evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+    .toBe("rgb(10, 27, 45)");
 
-  expect(before).toBe("rgb(10, 27, 45)");
-  expect(after).toBe(before);
+  await surface.hover();
+  await expect
+    .poll(() =>
+      surface.evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+    .toBe("rgb(10, 27, 45)");
 });
