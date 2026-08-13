@@ -4,6 +4,7 @@ const FIXTURE_NOW_SECONDS = Date.UTC(2026, 7, 13, 7, 0, 0) / 1000;
 
 interface ProviderState {
   failComparison: boolean;
+  comparisonDelayMs?: number;
 }
 
 function timezoneForLongitude(longitude: number): string {
@@ -198,6 +199,9 @@ async function stubProviders(
       await route.abort("failed");
       return;
     }
+    if (comparison && state.comparisonDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, state.comparisonDelayMs));
+    }
 
     const timezone = timezoneForLongitude(
       Number(url.searchParams.get("longitude"))
@@ -232,7 +236,7 @@ async function openComparison(page: Page): Promise<void> {
   ).toHaveCount(3);
 }
 
-test("comparison cards preserve current and hourly condition context", async ({
+test("comparison cards preserve condition and modeled-rain context", async ({
   page,
 }) => {
   const state: ProviderState = { failComparison: false };
@@ -251,6 +255,7 @@ test("comparison cards preserve current and hourly condition context", async ({
   await expect(paloAlto.getByTestId("comparison-hour").first()).toContainText(
     "Mostly Clear"
   );
+  await expect(paloAlto.getByText("Modeled rain", { exact: true })).toBeVisible();
 });
 
 test("comparison local clocks continue updating while the view remains open", async ({
@@ -274,6 +279,35 @@ test("comparison local clocks continue updating while the view remains open", as
   await expect(localTime).toContainText("12:00 AM");
   await page.clock.fastForward(30_000);
   await expect(localTime).toContainText("12:01 AM");
+});
+
+test("cached comparison cards expose successful revalidation as refreshing", async ({
+  page,
+}) => {
+  const state: ProviderState = { failComparison: false };
+  await stubProviders(page, state);
+  await dismissOnboarding(page);
+
+  const compare = page.getByRole("button", {
+    name: "Compare saved locations",
+  });
+  await openComparison(page);
+
+  state.comparisonDelayMs = 1_000;
+  await compare.click();
+  await expect(page.getByTestId("forecast-summary")).toBeVisible();
+  await compare.click();
+
+  const paloAlto = page
+    .getByTestId("comparison-card")
+    .filter({ hasText: "Palo Alto" });
+  await expect(paloAlto).toHaveAttribute("data-status", "refreshing");
+  await expect(paloAlto.getByRole("status")).toHaveText(
+    "Refreshing cached summary…"
+  );
+  await expect(paloAlto).toHaveAttribute("data-status", "ready", {
+    timeout: 5_000,
+  });
 });
 
 test("cached comparison cards expose failed revalidation as stale", async ({
