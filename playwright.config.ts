@@ -5,6 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
  * should be the artefact that ships.
  */
 const visualSpec = /liquid-glass\.visual\.spec\.ts/;
+const desktopResizeJourneys =
+  /keeps NOAA radar aligned on a wide zoomed-out map|updates responsive map height without resetting interaction state/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -21,7 +23,14 @@ export default defineConfig({
   projects: [
     { name: "chromium", testIgnore: visualSpec, use: { ...devices["Desktop Chrome"] } },
     { name: "webkit", testIgnore: visualSpec, use: { ...devices["Desktop Safari"] } },
-    { name: "iphone", testIgnore: visualSpec, use: { ...devices["iPhone 15"] } },
+    {
+      name: "iphone",
+      testIgnore: visualSpec,
+      // These journeys deliberately resize through tablet/cinema and exercise desktop map
+      // actionability. Desktop WebKit covers them; iPhone remains scoped to real phone flows.
+      grepInvert: desktopResizeJourneys,
+      use: { ...devices["iPhone 15"] },
+    },
     { name: "android", testIgnore: visualSpec, use: { ...devices["Pixel 7"] } },
     {
       name: "visual",
