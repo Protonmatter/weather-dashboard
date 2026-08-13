@@ -232,7 +232,7 @@ async function openComparison(page: Page): Promise<void> {
   ).toHaveCount(3);
 }
 
-test("comparison cards preserve current condition and feels-like context", async ({
+test("comparison cards preserve current and hourly condition context", async ({
   page,
 }) => {
   const state: ProviderState = { failComparison: false };
@@ -248,6 +248,9 @@ test("comparison cards preserve current condition and feels-like context", async
     paloAlto.locator(".text-right.text-sm > p").first()
   ).toHaveText("Mostly Clear");
   await expect(paloAlto.getByText("Feels 63°", { exact: true })).toBeVisible();
+  await expect(paloAlto.getByTestId("comparison-hour").first()).toContainText(
+    "Mostly Clear"
+  );
 });
 
 test("comparison local clocks continue updating while the view remains open", async ({
