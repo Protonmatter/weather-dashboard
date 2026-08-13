@@ -258,7 +258,7 @@ test("comparison cards preserve condition, rainfall, and update provenance", asy
     "Mostly Clear"
   );
   await expect(paloAlto.getByText("Rain today", { exact: true })).toBeVisible();
-  await expect(paloAlto.getByText("Modeled", { exact: true })).toBeVisible();
+  await expect(paloAlto.getByText(/in · modeled$/i)).toBeVisible();
   await expect(paloAlto.getByText(/^Open-Meteo · Updated /)).toBeVisible();
 });
 
