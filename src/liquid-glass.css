@@ -124,16 +124,36 @@
   opacity: 0.72;
 }
 
-.map-glass-control {
+/* The map is a darker semantic frame around opaque weather imagery. */
+[data-testid="forecast-map-card"] {
+  --glass-blur: var(--glass-map-blur);
+  --glass-alpha: var(--glass-map-alpha);
+  border-radius: var(--glass-map-radius);
+}
+[data-testid="forecast-map-card"] button,
+[data-testid="forecast-map-card"] [role="tab"] {
   min-height: 44px;
-  border: 1px solid rgb(255 255 255 / 0.20);
-  background: rgb(4 17 31 / 0.62);
+  border-color: rgb(255 255 255 / 0.20);
+  background-color: rgb(4 17 31 / 0.62);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 8px 22px rgb(0 0 0 / 0.28);
 }
-.map-glass-control:hover,
-.map-glass-control[aria-pressed="true"],
-.map-glass-control[aria-selected="true"] { background: rgb(255 255 255 / 0.18); border-color: rgb(255 255 255 / 0.34); }
-.map-glass-overlay { border: 1px solid rgb(255 255 255 / 0.16); background: rgb(4 17 31 / 0.78); box-shadow: 0 12px 28px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.11); }
+[data-testid="forecast-map-card"] button:hover,
+[data-testid="forecast-map-card"] button[aria-pressed="true"],
+[data-testid="forecast-map-card"] [role="tab"][aria-selected="true"] {
+  background-color: rgb(255 255 255 / 0.18);
+  border-color: rgb(255 255 255 / 0.34);
+}
+[data-testid="forecast-map-legend"],
+[data-testid="forecast-map-attribution"],
+[data-testid="forecast-map-card"] [role="status"] > span {
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background-color: rgb(4 17 31 / 0.82);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.11);
+}
+[data-testid="forecast-map-viewport"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 
 @media (max-width: 767px) {
   .scene-city-depth { display: none; }
