@@ -4,6 +4,7 @@ const FIXED_NOW = new Date("2026-02-18T07:00:00.000Z");
 
 async function bootVisualDashboard(page: Page): Promise<void> {
   await page.clock.setFixedTime(FIXED_NOW);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => {
     localStorage.setItem(
       "wx.location-onboarding.v1",
@@ -22,7 +23,20 @@ async function bootVisualDashboard(page: Page): Promise<void> {
   }
   await page.goto("/");
   await page.getByTestId("forecast-overview").waitFor();
-  await page.evaluate(() => document.fonts.ready);
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        caret-color: transparent !important;
+      }
+      .weather-particles, .scene-storm-flash { display: none !important; }
+    `,
+  });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
 }
 
 const scenarios = [

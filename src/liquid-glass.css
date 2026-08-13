@@ -129,6 +129,7 @@
   --glass-blur: var(--glass-map-blur);
   --glass-alpha: var(--glass-map-alpha);
   border-radius: var(--glass-map-radius);
+  scroll-margin-top: 1rem;
 }
 [data-testid="forecast-map-card"] button,
 [data-testid="forecast-map-card"] [role="tab"] {
@@ -136,6 +137,8 @@
   border-color: rgb(255 255 255 / 0.20);
   background-color: rgb(4 17 31 / 0.62);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 8px 22px rgb(0 0 0 / 0.28);
+  transition: none !important;
+  transform: none !important;
 }
 [data-testid="forecast-map-card"] button:hover,
 [data-testid="forecast-map-card"] button[aria-pressed="true"],

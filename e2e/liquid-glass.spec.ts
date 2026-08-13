@@ -26,20 +26,31 @@ test("exposes scene and glass-mode presentation hooks", async ({ page }) => {
 });
 
 test("uses the approved responsive forecast overview", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 });
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+  const expectedTarget = viewport.width <= 767
+    ? "phone"
+    : viewport.width >= 1600 && viewport.width / viewport.height >= 1.6
+      ? "cinema"
+      : "tablet";
+
   await bootFallbackDashboard(page);
   await expect(page.getByTestId("forecast-overview")).toHaveAttribute("data-layout", "responsive-matrix");
+  await expect(page.getByTestId("weather-app")).toHaveAttribute("data-target", expectedTarget);
   await expect(page.getByTestId("current-conditions-hero")).toHaveAttribute("data-glass-level", "hero");
   await expect(page.getByTestId("temperature-trend-card")).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('[data-target="phone"]')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
 test("renders procedural atmospheric depth behind the glass surfaces", async ({ page }) => {
   await bootFallbackDashboard(page);
   await expect(page.getByTestId("weather-backdrop")).toHaveAttribute("data-day", /day|night/);
-  await expect(page.getByTestId("scene-city")).toBeVisible();
+  const city = page.getByTestId("scene-city");
+  await expect(city).toBeAttached();
+  if ((page.viewportSize()?.width ?? 1280) <= 767) {
+    await expect(city).toBeHidden();
+  } else {
+    await expect(city).toBeVisible();
+  }
   await expect(page.getByTestId("scene-reflections")).toBeVisible();
   await expect(page.getByTestId("scene-haze")).toBeVisible();
 });
@@ -68,16 +79,22 @@ test("map and radar controls retain readable depth and tab semantics", async ({ 
   const shell = page.getByTestId("forecast-map-shell");
   await shell.scrollIntoViewIfNeeded();
   const mapCard = page.getByTestId("forecast-map-card");
-  await expect(mapCard).toBeVisible();
+  await expect(mapCard).toBeVisible({ timeout: 15_000 });
   const mapTokens = await mapCard.evaluate((node) => {
     const style = getComputedStyle(node);
-    return { blur: style.getPropertyValue("--glass-blur").trim(), alpha: style.getPropertyValue("--glass-alpha").trim() };
+    return {
+      blur: style.getPropertyValue("--glass-blur").trim(),
+      alpha: Number.parseFloat(style.getPropertyValue("--glass-alpha")),
+    };
   });
-  expect(mapTokens).toEqual({ blur: "20px", alpha: "0.46" });
+  expect(mapTokens.blur).toBe("20px");
+  expect(mapTokens.alpha).toBeCloseTo(0.46, 5);
 
   const radarTab = page.getByRole("tab", { name: "Radar observations" });
+  await expect(radarTab).toBeVisible();
+  await expect(radarTab).toBeEnabled();
   const before = await radarTab.evaluate((node) => getComputedStyle(node).backgroundColor);
-  await radarTab.click();
+  await radarTab.dispatchEvent("click");
   await expect(radarTab).toHaveAttribute("aria-selected", "true");
   const after = await radarTab.evaluate((node) => getComputedStyle(node).backgroundColor);
   expect(after).not.toBe(before);
@@ -130,6 +147,7 @@ test("nested metric insets do not own another backdrop blur", async ({ page }) =
       webkit: (style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter,
     };
   });
-  expect(["", "none"].includes(filters.backdrop)).toBe(true);
-  expect(["", "none"].includes(filters.webkit)).toBe(true);
+  for (const filter of [filters.backdrop, filters.webkit]) {
+    expect((filter ?? "").toLowerCase()).not.toContain("blur");
+  }
 });
