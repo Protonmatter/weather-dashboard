@@ -9,8 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Archive source
-        run: tar --exclude=.git --exclude=node_modules -czf /tmp/source-snapshot.tgz .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Archive source and dependencies
+        run: tar --exclude=.git -czf /tmp/source-snapshot.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: source-snapshot
