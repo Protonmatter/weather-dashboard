@@ -185,7 +185,10 @@ async function bootFullDashboard(page: Page): Promise<void> {
     await page.route(pattern, (route) => route.abort());
   }
   await page.goto("/");
-  await expect(page.getByTestId("forecast-overview")).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("status").filter({ hasText: "Couldn't reach the forecast service" })
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("forecast-overview")).toBeVisible();
   await expect(page.getByTestId("weather-metrics")).toBeVisible();
   await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
   await expect(page.getByTestId("forecast-map-card")).toBeVisible({ timeout: 15_000 });
