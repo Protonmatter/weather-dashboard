@@ -41,5 +41,16 @@ test("uses the approved responsive forecast overview", async ({ page }) => {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('[data-target="phone"]')).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
+  ).toBeLessThanOrEqual(0);
+});
+
+test("renders procedural atmospheric depth behind the glass surfaces", async ({
+  page,
+}) => {
+  await bootFallbackDashboard(page);
+  await expect(page.getByTestId("weather-skyline")).toBeVisible();
+  await expect(page.getByTestId("weather-reflections")).toBeVisible();
+  await expect(page.getByTestId("weather-haze")).toBeVisible();
 });
