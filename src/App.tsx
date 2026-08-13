@@ -4,15 +4,7 @@ import { SearchBar } from "./components/SearchBar";
 import { LocationOnboarding } from "./components/LocationOnboarding";
 import { SavedLocationsBar } from "./components/SavedLocationsBar";
 import { ComparisonBoundary } from "./components/ComparisonBoundary";
-import { Hero } from "./components/Hero";
-import { PrecipitationCard } from "./components/PrecipitationCard";
-import {
-  HourlyStrip,
-  TenDayForecast,
-  AirQualityCard,
-  UvCard,
-  SunsetCard,
-} from "./components/Panels";
+import { ForecastOverview } from "./components/ForecastOverview";
 import { Card } from "./components/Card";
 import { ForecastMapBoundary } from "./components/ForecastMapBoundary";
 import { WeatherMetrics } from "./components/WeatherMetrics";
@@ -120,12 +112,24 @@ function DeferredForecastMap({
     <div ref={host} data-testid="forecast-map-shell">
       {visible ? (
         <ForecastMapBoundary>
-          <Suspense fallback={<Card title="48-hour forecast map" className="mt-4 min-h-72">Loading map…</Card>}>
-            <ForecastMap place={place} timezone={timezone} target={target} unit={unit} enabled={enabled} />
+          <Suspense
+            fallback={
+              <Card level="map" title="48-hour forecast map" className="mt-4 min-h-72">
+                Loading map…
+              </Card>
+            }
+          >
+            <ForecastMap
+              place={place}
+              timezone={timezone}
+              target={target}
+              unit={unit}
+              enabled={enabled}
+            />
           </Suspense>
         </ForecastMapBoundary>
       ) : (
-        <Card title="48-hour forecast map" className="mt-4 min-h-72">
+        <Card level="map" title="48-hour forecast map" className="mt-4 min-h-72">
           <span className="text-xs text-white/60">Map loads nearby.</span>
         </Card>
       )}
@@ -155,7 +159,9 @@ export default function App() {
   const [locating, setLocating] = useState(false);
 
   useEffect(() => {
-    if (initialSavedState.warning) setNotice((current) => current ?? initialSavedState.warning);
+    if (initialSavedState.warning) {
+      setNotice((current) => current ?? initialSavedState.warning);
+    }
   }, [initialSavedState.warning]);
 
   const search = usePlaceSearch(query);
@@ -192,7 +198,12 @@ export default function App() {
       timer = setTimeout(() => {
         setRainTodayIn(0);
         if (!weatherBusy.current) {
-          staleRefreshKey.current = `${placeKey}:${+dateAtLocalTime(new Date(), timezone, 0, 0)}`;
+          staleRefreshKey.current = `${placeKey}:${+dateAtLocalTime(
+            new Date(),
+            timezone,
+            0,
+            0
+          )}`;
           void weather.load(place);
         }
         schedule();
@@ -202,7 +213,8 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [data.place, data.timezone, placeKey, weather.load]);
 
-  const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
+  const T = (fahrenheit: number): number =>
+    Math.round(unit === "F" ? fahrenheit : f2c(fahrenheit));
 
   const pick = useCallback(
     async (place: Place) => {
@@ -220,35 +232,46 @@ export default function App() {
     [weather]
   );
 
-  const persistSavedLocations = useCallback((locations: readonly Place[]) => {
-    const next = writeSavedLocations(locationStorage, locations);
-    setSavedLocations(next.locations);
-    if (next.warning) setNotice(next.warning);
-    if (next.locations.length < 2) setCompare(false);
-  }, [locationStorage]);
+  const persistSavedLocations = useCallback(
+    (locations: readonly Place[]) => {
+      const next = writeSavedLocations(locationStorage, locations);
+      setSavedLocations(next.locations);
+      if (next.warning) setNotice(next.warning);
+      if (next.locations.length < 2) setCompare(false);
+    },
+    [locationStorage]
+  );
 
   const saveCurrentLocation = useCallback(() => {
     const result = addSavedLocation(savedLocations, data.place);
     if (!result.ok) {
-      setNotice({
-        duplicate: "This location is already saved.",
-        invalid: "This location cannot be saved.",
-        limit: "Remove a saved location before adding another.",
-      }[result.reason]);
+      setNotice(
+        {
+          duplicate: "This location is already saved.",
+          invalid: "This location cannot be saved.",
+          limit: "Remove a saved location before adding another.",
+        }[result.reason]
+      );
       return;
     }
     persistSavedLocations(result.locations);
     setNotice(`${data.place.name} saved in this browser.`);
   }, [data.place, persistSavedLocations, savedLocations]);
 
-  const removeSaved = useCallback((id: string) => {
-    persistSavedLocations(removeSavedLocation(savedLocations, id));
-  }, [persistSavedLocations, savedLocations]);
+  const removeSaved = useCallback(
+    (id: string) => {
+      persistSavedLocations(removeSavedLocation(savedLocations, id));
+    },
+    [persistSavedLocations, savedLocations]
+  );
 
-  const openFullForecast = useCallback((candidate: Place) => {
-    setCompare(false);
-    void pick(candidate);
-  }, [pick]);
+  const openFullForecast = useCallback(
+    (candidate: Place) => {
+      setCompare(false);
+      void pick(candidate);
+    },
+    [pick]
+  );
 
   useEffect(() => {
     if (search.results.length) setOpen(true);
@@ -263,7 +286,9 @@ export default function App() {
   const finishOnboarding = useCallback(() => {
     const persisted = writeLocationOnboardingComplete(locationStorage);
     setOnboardingOpen(false);
-    if (!persisted) setNotice("Your location choice is remembered for this session only.");
+    if (!persisted) {
+      setNotice("Your location choice is remembered for this session only.");
+    }
   }, [locationStorage]);
 
   const skipLocation = useCallback(() => {
@@ -271,9 +296,6 @@ export default function App() {
     void weather.load(DEFAULT_PLACE);
   }, [finishOnboarding, weather]);
 
-  // Archive each live forecast the moment it renders, then score whatever has elapsed.
-  // Recording must happen before the outcome is knowable — scoring against data fetched
-  // after the fact would prove nothing.
   useEffect(() => {
     const bundle = weather.data;
     if (!bundle.live || !bundle.ensemble.live) return;
@@ -284,9 +306,7 @@ export default function App() {
         lat: bundle.place.lat,
         lon: bundle.place.lon,
         members: bundle.ensemble.memberSeries ?? [],
-        // Cap to the ensemble's 24h window: a 240-hour axis against 24-hour member rows
-        // would archive phantom zero-member records for every hour past the window.
-        validTimes: bundle.hourly.slice(0, 24).map((h) => h.time),
+        validTimes: bundle.hourly.slice(0, 24).map((hour) => hour.time),
         live: true,
         tempMembers: bundle.ensemble.tempMemberSeries,
       });
@@ -312,11 +332,9 @@ export default function App() {
       const place = await locateDevice();
       if (onboardingOpen) finishOnboarding();
       await pick(place);
-    } catch (err) {
-      if (isAbort(err)) return;
-      const failure = err instanceof DeviceLocationError
-        ? err.kind
-        : "unknown";
+    } catch (error) {
+      if (isAbort(error)) return;
+      const failure = error instanceof DeviceLocationError ? error.kind : "unknown";
       if (onboardingOpen) {
         finishOnboarding();
         void weather.load(DEFAULT_PLACE);
@@ -327,24 +345,30 @@ export default function App() {
     }
   }, [finishOnboarding, onboardingOpen, pick, weather]);
 
-  // RFC 0001 section 5: one codebase, three targets. Mobile-first defaults widen at
-  // tablet and go denser and fuller-bleed on a 16:9 desktop.
   const layout = {
-    phone: { max: 520, main: "minmax(0, 1fr)", side: "minmax(0, 1fr)", pad: "px-3 py-4", gap: "gap-3" },
-    tablet: { max: 1180, main: "repeat(auto-fit, minmax(280px, 1fr))", side: "repeat(auto-fit, minmax(220px, 1fr))", pad: "px-4 py-6 sm:px-6 sm:py-8", gap: "gap-4" },
-    cinema: { max: 1760, main: "minmax(360px, 1fr) minmax(0, 2fr)", side: "repeat(auto-fit, minmax(260px, 1fr))", pad: "px-10 py-10", gap: "gap-5" },
+    phone: { max: 520, pad: "px-3 py-4" },
+    tablet: { max: 1240, pad: "px-4 py-6 sm:px-6 sm:py-8" },
+    cinema: { max: 1760, pad: "px-8 py-8 xl:px-10 xl:py-10" },
   }[target];
 
   const { current, hourly, daily, place, aqi, ensemble } = data;
   const activePlaceId = savedPlaceId(place);
-  const canSaveCurrent = !savedLocations.some((candidate) => savedPlaceId(candidate) === activePlaceId);
+  const canSaveCurrent = !savedLocations.some(
+    (candidate) => savedPlaceId(candidate) === activePlaceId
+  );
   const cond = decodeWMO(current.code, current.isDay);
   const scene = deriveWeatherScene(current);
-  const today = daily[0];
   const message = notice ?? weather.error ?? search.error;
 
   return (
-    <div className="relative w-full min-h-screen overflow-x-clip text-white" style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}>
+    <div
+      className="relative min-h-screen w-full overflow-x-clip text-white"
+      style={{ fontFamily: FONT, WebkitFontSmoothing: "antialiased" }}
+      data-testid="weather-app"
+      data-target={target}
+      data-scene={scene.kind}
+      data-glass-mode="auto"
+    >
       <Backdrop scene={scene} />
 
       <LocationOnboarding
@@ -355,7 +379,7 @@ export default function App() {
         restoreFocusRef={searchInputRef}
       />
 
-      <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }} data-target={target}>
+      <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }}>
         <SearchBar
           inputRef={searchInputRef}
           query={query}
@@ -387,14 +411,23 @@ export default function App() {
         />
 
         {message && (
-          <p className="mb-4 text-xs" style={{ color: "rgba(255,255,255,0.62)" }} role="status">
+          <p className="mb-4 text-xs text-white/65" role="status">
             {message}
           </p>
         )}
 
         {compare ? (
-          <ComparisonBoundary onExit={() => setCompare(false)} restoreFocusRef={compareButtonRef}>
-            <Suspense fallback={<p className="min-h-64 text-sm text-white/60" role="status">Opening comparison…</p>}>
+          <ComparisonBoundary
+            onExit={() => setCompare(false)}
+            restoreFocusRef={compareButtonRef}
+          >
+            <Suspense
+              fallback={
+                <p className="min-h-64 text-sm text-white/60" role="status">
+                  Opening comparison…
+                </p>
+              }
+            >
               <ComparisonView
                 places={savedLocations}
                 unit={unit}
@@ -405,48 +438,55 @@ export default function App() {
           </ComparisonBoundary>
         ) : (
           <>
-        <Hero place={place} current={current} today={today} hourly={hourly} T={T} timezone={data.timezone} />
-        <HourlyStrip hourly={hourly} T={T} spread={ensemble.tempSpread} timezone={data.timezone} />
-
-        <div
-          className={`grid ${layout.gap}`}
-          style={{ gridTemplateColumns: layout.main }}
-          data-testid="forecast-summary"
-        >
-          <TenDayForecast daily={daily} current={current} hourly={hourly} T={T} timezone={data.timezone} />
-          <div className={`grid ${layout.gap}`} style={{ gridTemplateColumns: layout.side }}>
-            <AirQualityCard aqi={aqi} wet={cond.wet} />
-            <PrecipitationCard ens={ensemble} hourly={hourly} timezone={data.timezone} />
-            <UvCard uv={today?.uv ?? 0} />
-            <SunsetCard day={today} timezone={data.timezone} />
-          </div>
-        </div>
+            <ForecastOverview
+              target={target}
+              place={place}
+              current={current}
+              daily={daily}
+              hourly={hourly}
+              aqi={aqi}
+              ensemble={ensemble}
+              timezone={data.timezone}
+              T={T}
+              wet={cond.wet}
+            />
 
             <WeatherMetrics
               current={current}
-              uv={today?.uv ?? 0}
+              uv={daily[0]?.uv ?? 0}
               rainTodayIn={rainTodayIn}
               ensemble={ensemble}
               placeKey={placeKey}
             />
 
-        <DeferredForecastMap place={place} timezone={data.timezone} target={target} unit={unit} enabled={data.live} />
+            <DeferredForecastMap
+              place={place}
+              timezone={data.timezone}
+              target={target}
+              unit={unit}
+              enabled={data.live}
+            />
 
             {score && (
               <div className="mt-4">
-                <Suspense fallback={<Card title="Forecast verification">Loading verification…</Card>}>
+                <Suspense
+                  fallback={
+                    <Card title="Forecast verification">Loading verification…</Card>
+                  }
+                >
                   <VerificationPanel score={score} />
                 </Suspense>
               </div>
             )}
 
-        <footer className="mt-6 flex items-center justify-between" style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
-          <span>
-            {data.live ? "Live data from Open-Meteo" : "Sample forecast"} · {ensemble.source} ({ensemble.n}) · Updated{" "}
-            {fmtClock(data.updatedAt, data.timezone)}
-          </span>
-          <span>{unit === "F" ? "Fahrenheit" : "Celsius"}</span>
-        </footer>
+            <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
+              <span>
+                {data.live ? "Live data from Open-Meteo" : "Sample forecast"} ·{" "}
+                {ensemble.source} ({ensemble.n}) · Updated{" "}
+                {fmtClock(data.updatedAt, data.timezone)}
+              </span>
+              <span>{unit === "F" ? "Fahrenheit" : "Celsius"}</span>
+            </footer>
           </>
         )}
       </div>

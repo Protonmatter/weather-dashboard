@@ -8,8 +8,7 @@ interface BackdropProps {
 const BOKEH: ReadonlyArray<readonly [string, number, number, number]> = [
   ["#ff4b3e", 8, 74, 190], ["#ffb347", 21, 88, 130], ["#5ad1ff", 3, 62, 150],
   ["#ff7a45", 34, 92, 110], ["#ffd76e", 62, 84, 140], ["#ff3b30", 79, 71, 170],
-  ["#4fa8ff", 91, 86, 130], ["#ffe0a3", 47, 95, 120], ["#7be0c0", 68, 66, 110],
-  ["#ff9ec7", 14, 55, 120],
+  ["#4fa8ff", 91, 86, 130], ["#7be0c0", 68, 66, 110],
 ];
 
 function sky(scene: WeatherScene): string {
@@ -26,10 +25,7 @@ function sky(scene: WeatherScene): string {
 }
 
 export function Backdrop({ scene }: BackdropProps) {
-  const particles = useMemo(
-    () => sceneParticles(scene, scene.particleCount),
-    [scene]
-  );
+  const particles = useMemo(() => sceneParticles(scene, scene.particleCount), [scene]);
   const stars = useMemo(() => sceneParticles(scene, 36), [scene]);
   const precipitation = scene.kind === "rain" || scene.kind === "storm" || scene.kind === "snow";
   const cloudy = scene.kind === "partly-cloudy" || scene.kind === "overcast" || scene.kind === "rain" || scene.kind === "snow" || scene.kind === "storm";
@@ -42,6 +38,7 @@ export function Backdrop({ scene }: BackdropProps) {
       data-testid="weather-backdrop"
       data-scene={scene.kind}
       data-intensity={scene.intensity}
+      data-day={scene.isDay ? "day" : "night"}
     >
       {!scene.isDay && scene.kind !== "overcast" && scene.kind !== "storm" && (
         <div className="absolute inset-0 scene-stars">
@@ -66,28 +63,21 @@ export function Backdrop({ scene }: BackdropProps) {
 
       {cloudy && (
         <div className="absolute inset-0 scene-clouds" style={{ opacity: 0.3 + scene.cloudCover / 180 }}>
-          <span />
-          <span />
-          <span />
+          <span /><span /><span />
         </div>
       )}
 
       {scene.kind === "fog" && <div className="absolute inset-0 scene-fog" />}
 
-      <div className="absolute inset-0" style={{ opacity: scene.isDay ? 0.2 : 0.72 }}>
+      <div className="absolute inset-x-0 bottom-0 scene-city-depth" data-testid="scene-city" />
+
+      <div className="absolute inset-0 scene-haze-depth" style={{ opacity: scene.isDay ? 0.2 : 0.72 }} data-testid="scene-haze">
         {BOKEH.map(([color, x, y, size], index) => (
-          <div
-            key={index}
-            className="absolute rounded-full"
-            style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, background: color, filter: "blur(38px)", opacity: 0.5 }}
-          />
+          <div key={index} className="absolute rounded-full" style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, background: color, filter: "blur(38px)", opacity: 0.5 }} />
         ))}
       </div>
 
-      <div
-        className="absolute inset-0"
-        style={{ background: "radial-gradient(120% 80% at 50% 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.45) 100%)" }}
-      />
+      <div className="absolute inset-0 scene-reflections" data-testid="scene-reflections" />
 
       {precipitation && (
         <div className="absolute inset-0 weather-particles">

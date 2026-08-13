@@ -1,23 +1,17 @@
 import { useEffect, useState } from "react";
 import { formatLocalDate, formatLocalWallTime, timezoneLabel } from "../lib/time";
 
-export function LocationClock({ timezone }: { timezone: string }) {
+export function useClock(intervalMs = 1000): Date {
   const [now, setNow] = useState(() => new Date());
-
   useEffect(() => {
-    setNow(new Date());
-    let interval: number | undefined;
-    const delay = 1000 - (Date.now() % 1000);
-    const timeout = window.setTimeout(() => {
-      setNow(new Date());
-      interval = window.setInterval(() => setNow(new Date()), 1000);
-    }, delay);
-    return () => {
-      window.clearTimeout(timeout);
-      if (interval !== undefined) window.clearInterval(interval);
-    };
-  }, [timezone]);
+    const interval = window.setInterval(() => setNow(new Date()), intervalMs);
+    return () => window.clearInterval(interval);
+  }, [intervalMs]);
+  return now;
+}
 
+export function LocationClock({ timezone }: { timezone: string }) {
+  const now = useClock();
   return (
     <time
       dateTime={now.toISOString()}
