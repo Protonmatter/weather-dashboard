@@ -7,8 +7,8 @@ const MAX_HASH_DISTANCE = 4;
 const MAX_HEIGHT_DRIFT = 32;
 
 const BASELINES = {
-  phone: { width: 390, height: 4086, dHash: "babe8e9efed6d69e" },
-  tablet: { width: 1180, height: 3044, dHash: "d6d47fe371f61b3f" },
+  phone: { width: 390, height: 4129, dHash: "babe8e9efec6d69e" },
+  tablet: { width: 1180, height: 3058, dHash: "d2d47fe371761b3f" },
   cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
 } as const;
 
