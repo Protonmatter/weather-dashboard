@@ -13,8 +13,6 @@ const place: Place = {
 };
 
 const current: CurrentConditions = {
-  time: new Date("2026-08-13T07:00:00.000Z"),
-  intervalSeconds: 900,
   temp: 67,
   feels: 63,
   humidity: 84,
@@ -33,7 +31,7 @@ describe("Hero precipitation provenance", () => {
     const markup = renderToStaticMarkup(
       <Hero
         place={place}
-        timeZone="America/Los_Angeles"
+        timezone="America/Los_Angeles"
         current={current}
         hourly={[]}
         T={(value) => Math.round(value)}
