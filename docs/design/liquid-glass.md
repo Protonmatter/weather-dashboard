@@ -58,7 +58,7 @@ npm run visual
 npm run e2e
 ```
 
-The visual project fixes the browser time, locale, timezone, motion preference, provider responses, and animation state. It compares SHA-256 hashes for phone, tablet, and cinema overview captures. A mismatch attaches the actual PNG to the Playwright report.
+The visual project fixes browser time, locale, timezone, motion preference, provider responses, and animation state. It verifies the rendered dimensions and a perceptual difference hash for phone, tablet, and cinema captures with a small Hamming-distance tolerance so harmless PNG encoding or subpixel rasterization drift does not invalidate the design baseline. A mismatch attaches the actual PNG and computed signature to the Playwright report.
 
 ## Review checklist
 
