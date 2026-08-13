@@ -63,7 +63,7 @@
     grid-template-columns: minmax(390px, 1fr) repeat(2, minmax(0, 1fr));
     grid-template-areas:
       "hero hourly hourly"
-      "daily air precip"
+      "hero air precip"
       "daily wind uv"
       "daily sunset trend";
     gap: 1.25rem;
