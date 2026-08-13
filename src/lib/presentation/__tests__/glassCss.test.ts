@@ -21,6 +21,13 @@ describe("Liquid Glass CSS contract", () => {
     expect(css).toContain("forced-colors: active");
   });
 
+  it("preserves primary-action contrast and opaque fallback hover states", () => {
+    expect(css).toContain(".glass-control--primary:hover");
+    expect(css).toContain('[data-glass-mode="solid"] .glass-surface.glass-control:hover');
+    expect(css.match(/\.glass-surface\.glass-control:hover \{ background: var\(--glass-solid\); \}/g)).toHaveLength(3);
+    expect(css).toContain("--glass-solid: rgb(10 27 45)");
+  });
+
   it("does not promote glass surfaces with will-change or nested filter declarations", () => {
     const surfaceBlock = css.slice(css.indexOf(".glass-surface {"), css.indexOf(".glass-surface::before"));
     expect(surfaceBlock).not.toContain("will-change");

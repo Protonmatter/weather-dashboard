@@ -26,7 +26,7 @@
   --glass-divider: rgb(255 255 255 / 0.11);
   --glass-shadow: 0 18px 48px rgb(0 5 18 / 0.30);
   --glass-shadow-deep: 0 28px 72px rgb(0 5 18 / 0.42);
-  --glass-solid: rgb(10 27 45 / 0.94);
+  --glass-solid: rgb(10 27 45);
   --accent-cyan: #68d7ff;
   --accent-blue: #49a9ff;
   --accent-amber: #ffc857;
@@ -91,6 +91,8 @@ html, body, #root {
 .glass-inset--active { background: rgb(255 255 255 / 0.15); border-color: rgb(255 255 255 / 0.30); }
 .glass-control { min-height: 44px; transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
 .glass-control:hover { background-color: rgb(255 255 255 / 0.12); border-color: rgb(255 255 255 / 0.26); }
+.glass-control--primary { background-color: rgb(255 255 255 / 0.90); border-color: rgb(255 255 255 / 0.78); color: rgb(15 23 42); }
+.glass-control--primary:hover { background-color: rgb(255 255 255); border-color: rgb(255 255 255); color: rgb(15 23 42); }
 .glass-control:active { transform: translateY(1px); }
 .glass-divider { border-color: var(--glass-divider); }
 .glass-scrim { background: rgb(1 8 20 / 0.66); }
@@ -111,11 +113,14 @@ html, body, #root {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+[data-glass-mode="solid"] .glass-surface.glass-control:hover { background: var(--glass-solid); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass-surface { background: var(--glass-solid); }
+  .glass-surface.glass-control:hover { background: var(--glass-solid); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .glass-surface { background: var(--glass-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass-surface.glass-control:hover { background: var(--glass-solid); }
 }
 @media (prefers-contrast: more) {
   .glass-surface { --glass-alpha: 0.82; border-color: rgb(255 255 255 / 0.48); }
