@@ -1,6 +1,6 @@
 import { useComparison } from "../hooks/useComparison";
 import type { ComparisonCache, ComparisonCardState } from "../lib/comparison/types";
-import { formatLocalHour, formatLocalTime, formatLocalWeekday, timezoneLabel } from "../lib/time";
+import { formatLocalHour, formatLocalTime, formatLocalWeekday } from "../lib/time";
 import type { Place } from "../lib/types";
 import { f2c } from "../lib/units";
 import { decodeWMO } from "../lib/wmo";
@@ -28,13 +28,13 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
     <article className="glass-surface p-4" data-testid="comparison-card" data-status={card.status} aria-busy={card.status === "loading" || card.status === "refreshing" || undefined}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0"><h2 className="truncate text-lg font-semibold">{card.place.name}</h2><p className="truncate text-xs text-white/55">{[card.place.admin, card.place.country].filter(Boolean).join(", ")}</p></div>
-        {summary && <div className="shrink-0 text-right"><span className="block text-[10px] uppercase tracking-wider text-white/45">Local time</span><time className="text-sm font-medium">{formatLocalTime(now, summary.timezone)} {timezoneLabel(now, summary.timezone)}</time></div>}
+        {summary && <div className="shrink-0 text-right"><span className="block text-[10px] uppercase tracking-wider text-white/45">Local time</span><time className="text-sm font-medium">{formatLocalTime(now, summary.timezone)}</time></div>}
       </div>
       {!summary && card.status === "loading" && <p className="mt-8 min-h-64 text-sm text-white/60" role="status">Loading summary…</p>}
       {!summary && card.status === "error" && <div className="glass-inset mt-8 min-h-64 rounded-2xl p-4" role="status"><p className="text-sm text-white/70">{card.error}</p><button type="button" onClick={onRetry} className={`${action} mt-4`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button></div>}
       {summary && condition && <>
           <div className="mt-5 flex items-end justify-between gap-3">
-            <div className="flex items-center gap-3"><condition.Icon size={30} aria-hidden="true" /><div><p className="text-4xl font-light" data-testid="comparison-temperature">{T(summary.current.temperatureF)}°</p><p className="text-xs">Feels {T(summary.current.apparentF)}°</p></div></div>
+            <div className="flex items-center gap-3"><condition.Icon /><div><p className="text-4xl font-light" data-testid="comparison-temperature">{T(summary.current.temperatureF)}°</p><p className="text-xs">Feels {T(summary.current.apparentF)}°</p></div></div>
             <div className="text-right text-sm"><p>{condition.label}</p><p className="text-xs text-white/55">H {T(summary.today.highF)}° · L {T(summary.today.lowF)}°</p></div>
           </div>
           <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
@@ -50,7 +50,7 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
           </section>
           {(card.status === "refreshing" || card.status === "stale") && <p className="mt-3 text-xs" role="status">{card.status === "refreshing" ? "Refreshing cached summary…" : card.error}</p>}
           {card.status === "stale" && <button type="button" onClick={onRetry} className={`${action} mt-2`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button>}
-          <div className="glass-divider mt-5 flex items-center justify-between gap-3 border-t pt-4"><p className="text-[10px] text-white/45">Open-Meteo · Updated {formatLocalTime(summary.updatedAt, summary.timezone)}</p><button type="button" onClick={onOpen} className={action} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
+          <div className="glass-divider mt-5 flex justify-end border-t pt-4"><button type="button" onClick={onOpen} className={action} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
         </>}
     </article>
   );
