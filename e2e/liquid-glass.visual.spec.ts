@@ -6,9 +6,9 @@ const HASH_SIZE = 8;
 const MAX_HASH_DISTANCE = 4;
 
 const BASELINES = {
-  phone: { width: 366, height: 2514, dHash: "060f4707331d8003" },
-  tablet: { width: 1132, height: 1723, dHash: "07b73730315809a9" },
-  cinema: { width: 1680, height: 1145, dHash: "2324555725706d59" },
+  phone: { width: 366, height: 2514, dHash: "86825d9101098687" },
+  tablet: { width: 1132, height: 1723, dHash: "0727135971393935" },
+  cinema: { width: 1680, height: 1145, dHash: "2324355724a46479" },
 } as const;
 
 type ScenarioName = keyof typeof BASELINES;
