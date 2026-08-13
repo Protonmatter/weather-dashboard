@@ -1,6 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { Search, X, Loader2, MapPin, RefreshCw } from "lucide-react";
-import { glassClass } from "../lib/presentation/glass";
 import { flag } from "../lib/units";
 import type { Place } from "../lib/types";
 
@@ -21,10 +20,7 @@ interface Props {
   onUnit: () => void;
 }
 
-const controlClass = glassClass("control", {
-  interactive: true,
-  className: "glass-control rounded-full",
-});
+const controlClass = "glass-surface glass-surface--control glass-surface--interactive glass-control rounded-full";
 
 export function SearchBar(p: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -68,19 +64,10 @@ export function SearchBar(p: Props) {
         </div>
 
         {p.open && p.results.length > 0 && (
-          <ul
-            id="place-results"
-            role="listbox"
-            className={glassClass("overlay", { className: "absolute left-0 right-0 z-20 mt-2 overflow-hidden p-1.5" })}
-            data-glass-level="overlay"
-          >
+          <ul id="place-results" role="listbox" className="glass-surface glass-surface--overlay absolute left-0 right-0 z-20 mt-2 overflow-hidden p-1.5" data-glass-level="overlay">
             {p.results.map((result) => (
               <li key={`${result.lat},${result.lon},${result.name}`} role="option" aria-selected={false}>
-                <button
-                  type="button"
-                  onClick={() => p.onPick(result)}
-                  className="glass-control w-full rounded-xl px-3 py-2 text-left"
-                >
+                <button type="button" onClick={() => p.onPick(result)} className="glass-control w-full rounded-xl px-3 py-2 text-left">
                   <span className="flex items-center gap-2.5">
                     <span className="w-5 shrink-0 text-center text-[15px]">
                       {flag(result.cc) || <MapPin size={13} className="text-white/55" aria-hidden="true" />}
@@ -91,11 +78,7 @@ export function SearchBar(p: Props) {
                         {[result.admin, result.country].filter(Boolean).join(", ") || "—"}
                       </span>
                     </span>
-                    {result.postcode && (
-                      <span className="glass-inset shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] text-white/75">
-                        {result.postcode}
-                      </span>
-                    )}
+                    {result.postcode && <span className="glass-inset shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] text-white/75">{result.postcode}</span>}
                   </span>
                 </button>
               </li>
@@ -104,33 +87,13 @@ export function SearchBar(p: Props) {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={p.onLocate}
-        disabled={p.locating}
-        className={`${controlClass} grid w-11 shrink-0 place-items-center disabled:opacity-60`}
-        data-glass-level="control"
-        aria-label={p.locating ? "Finding your location" : "Use my location"}
-        title={p.locating ? "Finding your location" : "Use my location"}
-      >
+      <button type="button" onClick={p.onLocate} disabled={p.locating} className={`${controlClass} grid w-11 shrink-0 place-items-center disabled:opacity-60`} data-glass-level="control" aria-label={p.locating ? "Finding your location" : "Use my location"} title={p.locating ? "Finding your location" : "Use my location"}>
         {p.locating ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <MapPin size={15} aria-hidden="true" />}
       </button>
-      <button
-        type="button"
-        onClick={p.onUnit}
-        className={`${controlClass} shrink-0 px-3.5 text-sm`}
-        data-glass-level="control"
-        aria-label={`Switch to ${p.unit === "F" ? "Celsius" : "Fahrenheit"}`}
-      >
+      <button type="button" onClick={p.onUnit} className={`${controlClass} shrink-0 px-3.5 text-sm`} data-glass-level="control" aria-label={`Switch to ${p.unit === "F" ? "Celsius" : "Fahrenheit"}`}>
         °{p.unit}
       </button>
-      <button
-        type="button"
-        onClick={p.onRefresh}
-        className={`${controlClass} grid w-11 shrink-0 place-items-center`}
-        data-glass-level="control"
-        aria-label="Refresh forecast"
-      >
+      <button type="button" onClick={p.onRefresh} className={`${controlClass} grid w-11 shrink-0 place-items-center`} data-glass-level="control" aria-label="Refresh forecast">
         <RefreshCw size={15} className={p.refreshing ? "animate-spin" : ""} aria-hidden="true" />
       </button>
     </div>

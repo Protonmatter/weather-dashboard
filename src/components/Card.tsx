@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { glassClass, type GlassLevel } from "../lib/presentation/glass";
 
 type CardElement = "section" | "article" | "header" | "div";
+type CardLevel = "panel" | "hero" | "overlay" | "map";
 type CardPadding = "compact" | "default" | "none";
 
 const paddingClass: Record<CardPadding, string> = {
@@ -13,7 +13,7 @@ const paddingClass: Record<CardPadding, string> = {
 
 interface CardProps {
   as?: CardElement;
-  level?: Exclude<GlassLevel, "control">;
+  level?: CardLevel;
   padding?: CardPadding;
   title?: string;
   icon?: LucideIcon;
@@ -37,9 +37,7 @@ export function Card({
   const Element = as;
   return (
     <Element
-      className={glassClass(level, {
-        className: `flex flex-col ${paddingClass[padding]} ${className}`,
-      })}
+      className={`glass-surface glass-surface--${level} flex flex-col ${paddingClass[padding]} ${className}`}
       style={style}
       data-testid={testId}
       data-glass-level={level}
@@ -69,35 +67,12 @@ export function Scale({ stops, pos, ticks, label }: ScaleProps) {
   const clamped = Math.min(100, Math.max(0, pos));
   return (
     <div>
-      <div
-        className="relative"
-        style={{ height: 6 }}
-        role="meter"
-        aria-valuenow={Math.round(clamped)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-      >
+      <div className="relative" style={{ height: 6 }} role="meter" aria-valuenow={Math.round(clamped)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
         <div className="absolute inset-0 rounded-full" style={{ background: `linear-gradient(90deg, ${stops})` }} />
-        <div
-          className="absolute rounded-full"
-          style={{
-            left: `${clamped}%`,
-            top: -3,
-            width: 12,
-            height: 12,
-            marginLeft: -6,
-            background: "#fff",
-            boxShadow: "0 0 0 2px rgba(0,0,0,0.28)",
-          }}
-        />
+        <div className="absolute rounded-full" style={{ left: `${clamped}%`, top: -3, width: 12, height: 12, marginLeft: -6, background: "#fff", boxShadow: "0 0 0 2px rgba(0,0,0,0.28)" }} />
       </div>
       {ticks && (
-        <div
-          className="mt-1.5 flex justify-between"
-          style={{ fontSize: 9, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)" }}
-          aria-hidden="true"
-        >
+        <div className="mt-1.5 flex justify-between" style={{ fontSize: 9, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)" }} aria-hidden="true">
           {ticks.map((tick) => <span key={tick}>{tick}</span>)}
         </div>
       )}
