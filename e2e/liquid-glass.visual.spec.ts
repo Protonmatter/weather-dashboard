@@ -104,32 +104,51 @@ function decodePng(png: Buffer): DecodedPng {
   return { width, height, bytesPerPixel, pixels };
 }
 
-function differenceHash(png: Buffer): { width: number; height: number; hash: string } {
-  const { width, height, bytesPerPixel, pixels } = decodePng(png);
+function downsampleLuminance(
+  image: DecodedPng,
+  columns: number,
+  rows: number
+): number[][] {
+  const { width, height, bytesPerPixel, pixels } = image;
+  if (width < columns || height < rows) {
+    throw new Error(`cannot downsample ${width}x${height} into ${columns}x${rows}`);
+  }
+
   const stride = width * bytesPerPixel;
+  return Array.from({ length: rows }, (_, row) => {
+    const top = Math.floor((row * height) / rows);
+    const bottom = Math.floor(((row + 1) * height) / rows);
+
+    return Array.from({ length: columns }, (_, column) => {
+      const left = Math.floor((column * width) / columns);
+      const right = Math.floor(((column + 1) * width) / columns);
+      let total = 0;
+
+      for (let y = top; y < bottom; y += 1) {
+        for (let x = left; x < right; x += 1) {
+          const pixelOffset = y * stride + x * bytesPerPixel;
+          const red = pixels[pixelOffset]!;
+          const green = pixels[pixelOffset + 1]!;
+          const blue = pixels[pixelOffset + 2]!;
+          const alpha = bytesPerPixel === 4 ? pixels[pixelOffset + 3]! / 255 : 1;
+          const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+          total += luminance * alpha + 255 * (1 - alpha);
+        }
+      }
+
+      return total / ((right - left) * (bottom - top));
+    });
+  });
+}
+
+function differenceHash(png: Buffer): { width: number; height: number; hash: string } {
+  const decoded = decodePng(png);
+  const luminance = downsampleLuminance(decoded, HASH_SIZE + 1, HASH_SIZE);
   let bits = "";
 
   for (let row = 0; row < HASH_SIZE; row += 1) {
-    const y = Math.min(
-      height - 1,
-      Math.floor(((row + 0.5) * height) / HASH_SIZE)
-    );
-    const luminance: number[] = [];
-
-    for (let column = 0; column <= HASH_SIZE; column += 1) {
-      const x = Math.min(
-        width - 1,
-        Math.floor(((column + 0.5) * width) / (HASH_SIZE + 1))
-      );
-      const pixelOffset = y * stride + x * bytesPerPixel;
-      const red = pixels[pixelOffset]!;
-      const green = pixels[pixelOffset + 1]!;
-      const blue = pixels[pixelOffset + 2]!;
-      luminance.push(Math.floor((red * 299 + green * 587 + blue * 114) / 1000));
-    }
-
     for (let column = 0; column < HASH_SIZE; column += 1) {
-      bits += luminance[column + 1]! > luminance[column]! ? "1" : "0";
+      bits += luminance[row]![column + 1]! > luminance[row]![column]! ? "1" : "0";
     }
   }
 
@@ -137,7 +156,7 @@ function differenceHash(png: Buffer): { width: number; height: number; hash: str
   for (let index = 0; index < bits.length; index += 4) {
     hash += Number.parseInt(bits.slice(index, index + 4), 2).toString(16);
   }
-  return { width, height, hash };
+  return { width: decoded.width, height: decoded.height, hash };
 }
 
 function hammingDistance(left: string, right: string): number {
@@ -152,6 +171,30 @@ function hammingDistance(left: string, right: string): number {
   }
   return distance;
 }
+
+test("dHash downsampling averages every pixel in each source region", () => {
+  const width = (HASH_SIZE + 1) * 2;
+  const height = HASH_SIZE;
+  const pixels = Buffer.alloc(width * height * 3);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 1; x < width; x += 2) {
+      const offset = (y * width + x) * 3;
+      pixels[offset] = 255;
+      pixels[offset + 1] = 255;
+      pixels[offset + 2] = 255;
+    }
+  }
+
+  const sampled = downsampleLuminance(
+    { width, height, bytesPerPixel: 3, pixels },
+    HASH_SIZE + 1,
+    HASH_SIZE
+  );
+  for (const row of sampled) {
+    for (const value of row) expect(value).toBeCloseTo(127.5, 5);
+  }
+});
 
 async function bootVisualDashboard(page: Page): Promise<void> {
   await page.clock.setFixedTime(FIXED_NOW);
@@ -223,6 +266,9 @@ for (const scenario of scenarios) {
     const actual = differenceHash(screenshot);
     const expected = BASELINES[scenario.name];
     const distance = hammingDistance(actual.hash, expected.dHash);
+    console.log(
+      `visual-signature ${scenario.name} ${actual.width}x${actual.height} ${actual.hash}`
+    );
 
     if (
       actual.width !== expected.width ||
