@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "size": "node scripts/size-budget.mjs",
     "e2e": "playwright test",
+    "visual": "playwright test --project=visual",
     "smoke": "node scripts/smoke.mjs",
     "deps": "node scripts/deps-check.mjs",
     "contract": "node scripts/contract.mjs"
