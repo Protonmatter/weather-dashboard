@@ -1,6 +1,6 @@
 # Unified Precipitation Timeline Design
 
-**Status:** Approved for implementation planning  
+**Status:** Approved design; awaiting written-spec review  
 **Date:** 2026-08-13  
 **Repository:** `Protonmatter/weather-dashboard`  
 **Branch:** `feature/unified-precipitation-timeline`
@@ -184,18 +184,21 @@ buildPrecipitationTimeline(input: {
 The function must:
 
 1. reject invalid dates and duplicate frame identifiers;
-2. retain observation frames only when `validAt <= now`;
-3. retain forecast frames only when `validAt > now`;
-4. retain forecast frames only through `now + horizonHours`;
-5. preserve provider-native observation cadence;
-6. preserve the existing hourly forecast cadence;
-7. sort the merged frame list chronologically;
-8. calculate the `NOW` marker from actual elapsed time, not frame count;
-9. default to the latest valid observation;
-10. default to the first forecast frame when no observations are available;
-11. return an empty timeline only when neither source has a usable frame.
+2. parse the existing GMT forecast timestamps explicitly as UTC rather than as browser-local civil time;
+3. retain observation frames only when `validAt <= now`;
+4. retain forecast frames only when `validAt > now`;
+5. retain forecast frames only through `now + horizonHours`;
+6. preserve provider-native observation cadence;
+7. preserve the existing hourly forecast cadence;
+8. sort the merged frame list chronologically;
+9. calculate the `NOW` marker from actual elapsed time, not frame count;
+10. default to the latest valid observation;
+11. default to the first forecast frame when no observations are available;
+12. return an empty timeline only when neither source has a usable frame.
 
 The function must not synthesize observation frames, forecast frames, or values across the boundary.
+
+`now` is timer-driven and refreshed at least once per minute while the timeline is mounted. A forecast frame that becomes past due is removed from the future segment on rebuild; it is never reclassified as an observation.
 
 ## 8. Timeline control behavior
 
@@ -260,7 +263,7 @@ Playback traverses the ordered frame list, not synthetic time increments.
 - Forecast frames play at the existing forecast cadence as discrete hourly frames.
 - The visual playback interval remains constant per rendered frame.
 - Crossing `NOW` switches renderer and labeling without crossfade.
-- Playback loops from the final selected-horizon frame to the first available observation frame.
+- Playback loops from the final selected-horizon frame to the first available frame: the earliest observation when observations exist, otherwise the first forecast frame.
 - Playback pauses when the map is offscreen, the page is hidden, imagery fails, or reduced motion is requested.
 - Reduced-motion users retain the slider and previous/next frame controls.
 
@@ -430,7 +433,7 @@ function renderSelectedFrame(frame: PrecipitationFrame): RendererKind {
 }
 ```
 
-Only one source-specific precipitation overlay is visible at a time.
+Only one source-specific precipitation overlay is visible at a time. Selecting a forecast frame hides the radar layer synchronously before the forecast canvas is exposed; selecting an observation frame hides the forecast precipitation overlay synchronously before radar imagery is exposed.
 
 ## 11. Data flow
 
@@ -536,8 +539,10 @@ The forecast grid is fetched once through the existing `useForecastMap` path. Th
 Add deterministic tests for:
 
 - observation and forecast chronological merge;
+- explicit UTC parsing of forecast timestamps;
 - exclusion of observation frames after `NOW`;
 - exclusion of forecast frames at or before `NOW`;
+- removal, rather than reclassification, of forecast frames as `NOW` advances;
 - `+24h` and `+48h` horizon filtering;
 - default selection of the latest observation;
 - forecast-only default selection;
@@ -554,6 +559,7 @@ Cover:
 
 - observed-to-forecast source transition;
 - forecast-to-observed reverse transition;
+- synchronous hiding of the prior source overlay;
 - no crossfade or simultaneous source overlays;
 - horizon toggle behavior;
 - reduced-motion behavior;
@@ -575,6 +581,7 @@ Across Chromium, WebKit, iPhone, and Android:
 8. Verify no radar request occurs before the timeline tab is selected.
 9. Verify touch targets and manual controls under reduced motion.
 10. Verify location changes cannot display a prior location's selected frame.
+11. Advance the browser clock and verify the `NOW` marker and future-frame set rebuild without relabeling forecast data as observed.
 
 ### 16.4 Visual regression
 
@@ -609,11 +616,22 @@ The implementation must update or supersede the observation-only wording in `doc
 Phase 1 defines a future-source interface without implementing reflectivity:
 
 ```ts
+interface SourceAttribution {
+  label: string;
+  url: string;
+}
+
+interface FuturePrecipitationFrame {
+  id: string;
+  validAt: Date;
+  sourceIndex: number;
+}
+
 interface FuturePrecipitationSource {
   provider: "open-meteo-gfs" | "hrrr-simulated-reflectivity";
   kind: "modeled-precipitation" | "simulated-reflectivity";
   frames: readonly FuturePrecipitationFrame[];
-  attribution: RadarAttribution;
+  attribution: SourceAttribution;
   coverage: "available" | "unavailable";
 }
 ```
@@ -636,7 +654,7 @@ The feature is complete when:
 2. The precipitation timeline includes all usable observations and future GFS precipitation.
 3. The default future horizon is `+24h` and `+48h` is user-selectable.
 4. The default selected frame is the latest observation when available.
-5. The `NOW` boundary is time-proportional, visible, textual, and accessible.
+5. The `NOW` boundary is timer-driven, time-proportional, visible, textual, and accessible.
 6. Observation frames retain provider-specific radar rendering and attribution.
 7. Forecast frames use the existing GFS precipitation grid and are visibly labeled as modeled forecast data.
 8. Playback crosses the boundary discretely without blending or semantic ambiguity.
