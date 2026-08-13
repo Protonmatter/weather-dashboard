@@ -40,7 +40,7 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
           <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
             <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">Humidity</dt><dd className="mt-1 text-sm font-semibold">{Math.round(summary.current.humidityPercent)}%</dd></div>
             <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">UV</dt><dd className="mt-1 text-sm font-semibold">{Math.round(summary.today.uvMax)}</dd></div>
-            <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">Rain today</dt><dd className="mt-1 text-sm font-semibold">{summary.today.rainSoFarIn.toFixed(2)} in</dd></div>
+            <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">Modeled rain</dt><dd className="mt-1 text-sm font-semibold">{summary.today.rainSoFarIn.toFixed(2)} in</dd></div>
           </dl>
           <section className="glass-inset mt-5 grid grid-cols-6 gap-1 rounded-2xl p-2" aria-label={`${card.place.name} next six hours`}>
             {summary.hourly.map((hour) => { const label = decodeWMO(hour.code, hour.isDay).label; return <div key={hour.time.toISOString()} className="text-center" data-testid="comparison-hour" aria-label={`${label}, ${Math.round(hour.pop)}% chance, ${hour.precipitationIn.toFixed(2)} inches`}><time className="block text-[9px] text-white/50">{formatLocalHour(hour.time, summary.timezone)}</time><span className="block truncate text-[8px] text-white/55">{label}</span><span className="block text-xs font-medium">{T(hour.tempF)}°</span><span className="block text-[9px] text-sky-200">{Math.round(hour.pop)}%</span><span className="block text-[8px] text-white/45">{hour.precipitationIn.toFixed(2)} in</span></div>; })}
@@ -48,7 +48,8 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
           <section className="mt-5 grid grid-cols-3 gap-2" aria-label={`${card.place.name} next three days`}>
             {summary.daily.map((day) => { const label = decodeWMO(day.code).label; return <div key={day.date.toISOString()} className="glass-inset rounded-xl p-2 text-center" data-testid="comparison-day"><time className="block text-[10px] text-white/55">{formatLocalWeekday(day.date, summary.timezone)}</time><span className="mt-1 block truncate text-[9px] text-white/60">{label}</span><span className="block text-xs">{T(day.highF)}° / {T(day.lowF)}°</span></div>; })}
           </section>
-          {card.status === "stale" && <><p className="mt-3 text-xs" role="status">{card.error}</p><button type="button" onClick={onRetry} className={`${action} mt-2`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button></>}
+          {(card.status === "refreshing" || card.status === "stale") && <p className="mt-3 text-xs" role="status">{card.status === "refreshing" ? "Refreshing cached summary…" : card.error}</p>}
+          {card.status === "stale" && <button type="button" onClick={onRetry} className={`${action} mt-2`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button>}
           <div className="glass-divider mt-5 flex justify-end border-t pt-4"><button type="button" onClick={onOpen} className={action} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
         </>}
     </article>
