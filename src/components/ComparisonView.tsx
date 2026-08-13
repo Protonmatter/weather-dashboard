@@ -25,7 +25,7 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
   const condition = summary && decodeWMO(summary.current.code, summary.current.isDay);
   const action = "glass-control glass-inset rounded-full px-3 py-2.5 text-xs";
   return (
-    <article className="glass-surface p-4" data-testid="comparison-card" data-status={card.status} aria-busy={card.status === "loading" || card.status === "refreshing"}>
+    <article className="glass-surface p-4" data-testid="comparison-card" data-status={card.status}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0"><h2 className="truncate text-lg font-semibold">{card.place.name}</h2><p className="truncate text-xs text-white/55">{[card.place.admin, card.place.country].filter(Boolean).join(", ")}</p></div>
         {summary && <div className="shrink-0 text-right"><span className="block text-[10px] uppercase tracking-wider text-white/45">Local time</span><time className="text-sm font-medium">{formatLocalTime(now, summary.timezone)} {timezoneLabel(now, summary.timezone)}</time></div>}
