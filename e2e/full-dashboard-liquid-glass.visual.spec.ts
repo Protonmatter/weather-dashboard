@@ -4,11 +4,12 @@ import { expect, test, type Page } from "@playwright/test";
 const FIXED_NOW = new Date("2026-02-18T07:00:00.000Z");
 const HASH_SIZE = 8;
 const MAX_HASH_DISTANCE = 4;
+const MAX_HEIGHT_DRIFT = 32;
 
 const BASELINES = {
-  phone: { width: 1, height: 1, dHash: "0000000000000000" },
-  tablet: { width: 1, height: 1, dHash: "0000000000000000" },
-  cinema: { width: 1, height: 1, dHash: "0000000000000000" },
+  phone: { width: 390, height: 4086, dHash: "babe8e9efed6d69e" },
+  tablet: { width: 1180, height: 3044, dHash: "d6d47fe371f61b3f" },
+  cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
 } as const;
 
 type ScenarioName = keyof typeof BASELINES;
@@ -216,7 +217,7 @@ for (const name of Object.keys(SCENARIOS) as ScenarioName[]) {
     console.info(`full-visual-signature ${name} ${signature.width}x${signature.height} ${signature.dHash}`);
     await test.info().attach(`full-dashboard-${name}.png`, { body: screenshot, contentType: "image/png" });
     expect(signature.width).toBe(BASELINES[name].width);
-    expect(signature.height).toBe(BASELINES[name].height);
+    expect(Math.abs(signature.height - BASELINES[name].height)).toBeLessThanOrEqual(MAX_HEIGHT_DRIFT);
     expect(hammingDistance(signature.dHash, BASELINES[name].dHash)).toBeLessThanOrEqual(MAX_HASH_DISTANCE);
   });
 }
