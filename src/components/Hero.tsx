@@ -14,9 +14,9 @@ interface Props {
 
 function summary(hourly: readonly HourPoint[], label: string): string {
   const wet = hourly.slice(0, 12).filter((hour) => decodeWMO(hour.code).wet).length;
-  if (wet >= 8) return `${label} on and off through the evening.`;
-  if (wet) return `${label} for the next few hours, then clearing. Mostly dry the rest of the week.`;
-  return `${label} conditions holding through the evening.`;
+  if (wet >= 8) return `${label} on and off this evening.`;
+  if (wet) return `${label} for a few hours, then clearing.`;
+  return `${label} through the evening.`;
 }
 
 export function Hero({ place, current, today, hourly, T, timezone }: Props) {
