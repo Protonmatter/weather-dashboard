@@ -190,3 +190,17 @@ export function reconcilePrecipitationSelection(
   }
   return timeline.defaultIndex == null ? null : timeline.frames[timeline.defaultIndex] ?? null;
 }
+
+export function stepPrecipitationFrame(
+  timeline: PrecipitationTimeline,
+  current: PrecipitationFrame | null,
+  direction: -1 | 1
+): PrecipitationFrame | null {
+  if (!timeline.frames.length) return null;
+  const currentIndex = current
+    ? timeline.frames.findIndex((frame) => frame.id === current.id)
+    : timeline.defaultIndex ?? 0;
+  const index = currentIndex < 0 ? timeline.defaultIndex ?? 0 : currentIndex;
+  const next = (index + direction + timeline.frames.length) % timeline.frames.length;
+  return timeline.frames[next] ?? null;
+}

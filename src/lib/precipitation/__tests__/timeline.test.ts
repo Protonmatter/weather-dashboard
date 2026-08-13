@@ -4,6 +4,7 @@ import {
   nearestPrecipitationFrame,
   parseGfsValidTime,
   reconcilePrecipitationSelection,
+  stepPrecipitationFrame,
 } from "../timeline";
 import type { RadarFrame } from "../../radar/types";
 
@@ -124,6 +125,46 @@ describe("unified precipitation timeline", () => {
       timeline,
       new Date("2026-08-13T16:00:00.000Z").getTime()
     )?.kind).toBe("observation");
+  });
+
+  it("preserves a selected frame across refresh and wraps stepping", () => {
+    const first = buildPrecipitationTimeline({
+      observations: [observation("o1", "2026-08-13T15:55:00.000Z")],
+      observationProvider: "noaa-mrms",
+      forecastTimes: ["2026-08-13T17:00", "2026-08-13T18:00"],
+      now,
+      horizonHours: 24,
+    });
+    const selected = first.frames.find((frame) => frame.kind === "forecast")!;
+    const refreshed = buildPrecipitationTimeline({
+      observations: [observation("o1", "2026-08-13T15:55:00.000Z")],
+      observationProvider: "noaa-mrms",
+      forecastTimes: ["2026-08-13T17:00", "2026-08-13T18:00", "2026-08-13T19:00"],
+      now,
+      horizonHours: 24,
+    });
+
+    expect(reconcilePrecipitationSelection(refreshed, {
+      id: selected.id,
+      validAtMs: selected.validAt.getTime(),
+    })?.id).toBe(selected.id);
+    expect(stepPrecipitationFrame(refreshed, refreshed.frames.at(-1)!, 1)?.id)
+      .toBe(refreshed.frames[0]?.id);
+    expect(stepPrecipitationFrame(refreshed, refreshed.frames[0]!, -1)?.id)
+      .toBe(refreshed.frames.at(-1)?.id);
+  });
+
+  it("returns null when reconciling or stepping an empty timeline", () => {
+    const empty = buildPrecipitationTimeline({
+      observations: [],
+      observationProvider: "unavailable",
+      forecastTimes: [],
+      now,
+      horizonHours: 24,
+    });
+    expect(reconcilePrecipitationSelection(empty, { id: "missing", validAtMs: now.getTime() }))
+      .toBeNull();
+    expect(stepPrecipitationFrame(empty, null, 1)).toBeNull();
   });
 
   it("rejects invalid and duplicate provider timestamps", () => {
