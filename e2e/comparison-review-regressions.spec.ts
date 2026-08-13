@@ -245,11 +245,9 @@ test("comparison cards preserve current condition and feels-like context", async
     .filter({ hasText: "Palo Alto" });
 
   await expect(
-    paloAlto.getByTestId("comparison-current-condition")
+    paloAlto.locator(".text-right.text-sm > p").first()
   ).toHaveText("Mostly Clear");
-  await expect(paloAlto.getByTestId("comparison-feels-like")).toHaveText(
-    "Feels 63°"
-  );
+  await expect(paloAlto.getByText("Feels 63°", { exact: true })).toBeVisible();
 });
 
 test("comparison local clocks continue updating while the view remains open", async ({
@@ -267,7 +265,8 @@ test("comparison local clocks continue updating while the view remains open", as
   const localTime = page
     .getByTestId("comparison-card")
     .filter({ hasText: "Palo Alto" })
-    .getByTestId("comparison-local-time");
+    .locator("time")
+    .first();
 
   await expect(localTime).toContainText("12:00 AM");
   await page.clock.fastForward(30_000);
@@ -296,9 +295,9 @@ test("cached comparison cards expose failed revalidation as stale", async ({
     .filter({ hasText: "Palo Alto" });
 
   await expect(paloAlto).toHaveAttribute("data-status", "stale");
-  await expect(
-    paloAlto.getByTestId("comparison-refresh-status")
-  ).toHaveText("Comparison data is unavailable. Try again.");
+  await expect(paloAlto.getByRole("status")).toHaveText(
+    "Comparison data is unavailable. Try again."
+  );
   await expect(
     paloAlto.getByRole("button", {
       name: "Retry Palo Alto comparison",
