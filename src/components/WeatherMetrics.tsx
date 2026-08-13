@@ -3,7 +3,14 @@ import { Card } from "./Card";
 import { uvLabel } from "../lib/units";
 import type { CurrentConditions, EnsembleSummary } from "../lib/types";
 
-type MetricId = "humidity" | "uv" | "rain-today" | "rain-next" | "wind" | "visibility" | "pressure";
+type MetricId =
+  | "humidity"
+  | "uv"
+  | "rain-today"
+  | "rain-next"
+  | "wind"
+  | "visibility"
+  | "pressure";
 
 interface Metric {
   id: MetricId;
@@ -21,10 +28,17 @@ interface Props {
   placeKey: string;
 }
 
-export function WeatherMetrics({ current, uv, rainTodayIn, ensemble, placeKey }: Props) {
+export function WeatherMetrics({
+  current,
+  uv,
+  rainTodayIn,
+  ensemble,
+  placeKey,
+}: Props) {
   const [preview, setPreview] = useState<MetricId | null>(null);
   const [pinned, setPinned] = useState<MetricId | null>(null);
   const previousPlaceKey = useRef(placeKey);
+
   useEffect(() => {
     if (previousPlaceKey.current === placeKey) return;
     previousPlaceKey.current = placeKey;
@@ -91,36 +105,52 @@ export function WeatherMetrics({ current, uv, rainTodayIn, ensemble, placeKey }:
   const detail = metrics.find((metric) => metric.id === pinned);
 
   return (
-    <Card title="Weather details" className="mt-4 fadein" data-testid="weather-metrics">
-      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+    <Card
+      title="Weather details"
+      className="mt-4 fadein"
+      data-testid="weather-metrics"
+    >
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}
+      >
         {metrics.map((metric) => {
           const tooltipId = `weather-metric-tooltip-${metric.id}`;
+          const selected = pinned === metric.id;
           return (
             <div key={metric.id} className="relative">
               <button
                 type="button"
-                className={`min-h-11 w-full rounded-2xl border px-3 py-2 text-left transition-colors ${pinned === metric.id ? "border-white/45 bg-white/20" : "border-white/15 bg-white/[0.07] hover:bg-white/[0.13]"}`}
+                className={`glass-control glass-inset min-h-11 w-full rounded-2xl px-3 py-2 text-left ${
+                  selected ? "glass-inset--active" : ""
+                }`}
                 data-testid={`weather-metric-${metric.id}`}
                 aria-label={`${metric.label}: ${metric.value}`}
-                aria-pressed={pinned === metric.id}
+                aria-pressed={selected}
                 aria-describedby={preview === metric.id ? tooltipId : undefined}
                 onPointerEnter={() => setPreview(metric.id)}
                 onPointerLeave={() => setPreview(null)}
                 onFocus={() => setPreview(metric.id)}
                 onBlur={() => setPreview(null)}
-                onClick={() => setPinned((value) => value === metric.id ? null : metric.id)}
+                onClick={() =>
+                  setPinned((value) => (value === metric.id ? null : metric.id))
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Escape") setPinned(null);
                 }}
               >
-                <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/55">{metric.label}</span>
-                <span className="mt-1 block text-lg font-light tabular-nums">{metric.value}</span>
+                <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/55">
+                  {metric.label}
+                </span>
+                <span className="mt-1 block text-lg font-light tabular-nums">
+                  {metric.value}
+                </span>
               </button>
               {preview === metric.id && shown && (
                 <div
                   id={tooltipId}
                   role="tooltip"
-                  className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-20 w-48 -translate-x-1/2 rounded-xl border border-white/15 bg-slate-950/95 px-3 py-2 text-center text-[11px] leading-snug text-white shadow-xl"
+                  className="glass-tooltip pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-20 w-48 -translate-x-1/2 rounded-xl px-3 py-2 text-center text-[11px] leading-snug text-white"
                 >
                   {shown.preview}
                 </div>
@@ -131,12 +161,14 @@ export function WeatherMetrics({ current, uv, rainTodayIn, ensemble, placeKey }:
       </div>
       {detail && (
         <div
-          className="mt-3 rounded-2xl border border-white/15 bg-slate-950/35 px-4 py-3"
+          className="glass-inset glass-inset--active mt-3 rounded-2xl px-4 py-3"
           data-testid="weather-metric-detail"
           aria-live="polite"
         >
           <div className="text-sm font-semibold">{detail.label}</div>
-          <p className="mt-1 text-xs leading-relaxed text-white/65">{detail.detail}</p>
+          <p className="mt-1 text-xs leading-relaxed text-white/65">
+            {detail.detail}
+          </p>
         </div>
       )}
     </Card>
