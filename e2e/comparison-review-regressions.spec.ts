@@ -200,7 +200,9 @@ async function stubProviders(
       return;
     }
     if (comparison && state.comparisonDelayMs) {
-      await new Promise((resolve) => setTimeout(resolve, state.comparisonDelayMs));
+      await new Promise((resolve) =>
+        setTimeout(resolve, state.comparisonDelayMs)
+      );
     }
 
     const timezone = timezoneForLongitude(
@@ -236,7 +238,7 @@ async function openComparison(page: Page): Promise<void> {
   ).toHaveCount(3);
 }
 
-test("comparison cards preserve condition and modeled-rain context", async ({
+test("comparison cards preserve condition, rainfall, and update provenance", async ({
   page,
 }) => {
   const state: ProviderState = { failComparison: false };
@@ -255,10 +257,12 @@ test("comparison cards preserve condition and modeled-rain context", async ({
   await expect(paloAlto.getByTestId("comparison-hour").first()).toContainText(
     "Mostly Clear"
   );
-  await expect(paloAlto.getByText("Modeled rain", { exact: true })).toBeVisible();
+  await expect(paloAlto.getByText("Rain today", { exact: true })).toBeVisible();
+  await expect(paloAlto.getByText("Modeled", { exact: true })).toBeVisible();
+  await expect(paloAlto.getByText(/^Open-Meteo · Updated /)).toBeVisible();
 });
 
-test("comparison local clocks continue updating while the view remains open", async ({
+test("comparison local clocks retain timezone context and continue updating", async ({
   page,
 }) => {
   await page.clock.install({
@@ -276,9 +280,9 @@ test("comparison local clocks continue updating while the view remains open", as
     .locator("time")
     .first();
 
-  await expect(localTime).toContainText("12:00 AM");
+  await expect(localTime).toHaveText(/^12:00 AM \S+$/);
   await page.clock.fastForward(30_000);
-  await expect(localTime).toContainText("12:01 AM");
+  await expect(localTime).toHaveText(/^12:01 AM \S+$/);
 });
 
 test("cached comparison cards expose successful revalidation as refreshing", async ({
@@ -335,6 +339,7 @@ test("cached comparison cards expose failed revalidation as stale", async ({
   await expect(paloAlto.getByRole("status")).toHaveText(
     "Comparison data is unavailable. Try again."
   );
+  await expect(paloAlto.getByText(/^Open-Meteo · Updated /)).toBeVisible();
   await expect(
     paloAlto.getByRole("button", {
       name: "Retry Palo Alto comparison",
