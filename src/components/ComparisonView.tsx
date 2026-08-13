@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useComparison } from "../hooks/useComparison";
 import type { ComparisonCache, ComparisonCardState } from "../lib/comparison/types";
 import { formatLocalHour, formatLocalTime, formatLocalWeekday } from "../lib/time";
@@ -53,7 +52,6 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
 
 export default function ComparisonView({ places, unit, cache, onOpenFull }: Props) {
   const { cards, retry } = useComparison(places, cache);
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const timer = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(timer); }, []);
-  return <section aria-labelledby="comparison-title"><div className="mb-4"><h1 id="comparison-title" className="text-xl font-semibold">Compare saved locations</h1><p className="mt-1 text-xs text-white/55">Curated conditions and outlooks. Rain today is an estimated local-day model total.</p></div><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="comparison-grid">{cards.map((card) => <SummaryCard key={card.id} card={card} unit={unit} now={now} onOpen={() => onOpenFull(card.place)} onRetry={() => retry(card.place)} />)}</div></section>;
+  const now = new Date();
+  return <section aria-labelledby="comparison-title"><h1 id="comparison-title" className="mb-4 text-xl font-semibold">Compare saved locations</h1><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="comparison-grid">{cards.map((card) => <SummaryCard key={card.id} card={card} unit={unit} now={now} onOpen={() => onOpenFull(card.place)} onRetry={() => retry(card.place)} />)}</div></section>;
 }
