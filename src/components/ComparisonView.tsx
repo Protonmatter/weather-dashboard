@@ -1,6 +1,12 @@
+import { useEffect, useState } from "react";
 import { useComparison } from "../hooks/useComparison";
 import type { ComparisonCache, ComparisonCardState } from "../lib/comparison/types";
-import { formatLocalHour, formatLocalTime, formatLocalWeekday } from "../lib/time";
+import {
+  formatLocalHour,
+  formatLocalTime,
+  formatLocalWeekday,
+  timezoneLabel,
+} from "../lib/time";
 import type { Place } from "../lib/types";
 import { f2c } from "../lib/units";
 import { decodeWMO } from "../lib/wmo";
@@ -12,46 +18,296 @@ interface Props {
   onOpenFull: (place: Place) => void;
 }
 
-function SummaryCard({ card, unit, now, onOpen, onRetry }: {
+function SummaryCard({
+  card,
+  unit,
+  now,
+  onOpen,
+  onRetry,
+}: {
   card: ComparisonCardState;
   unit: "F" | "C";
   now: Date;
   onOpen: () => void;
   onRetry: () => void;
 }) {
-  const T = (f: number): number => Math.round(unit === "F" ? f : f2c(f));
+  const T = (fahrenheit: number): number =>
+    Math.round(unit === "F" ? fahrenheit : f2c(fahrenheit));
   const summary = "summary" in card ? card.summary : null;
-  const action = "glass-control glass-inset rounded-full px-3 py-2.5 text-xs font-medium";
+  const action =
+    "glass-control glass-inset rounded-full px-3 py-2.5 text-xs font-medium";
+
   return (
-    <article className="glass-surface glass-surface--panel min-w-0 p-4 sm:p-5" data-glass-level="panel" data-testid="comparison-card" data-status={card.status} aria-busy={card.status === "loading" || card.status === "refreshing" || undefined}>
+    <article
+      className="glass-surface glass-surface--panel min-w-0 p-4 sm:p-5"
+      data-glass-level="panel"
+      data-testid="comparison-card"
+      data-status={card.status}
+      aria-busy={
+        card.status === "loading" || card.status === "refreshing" || undefined
+      }
+    >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><h2 className="truncate text-lg font-semibold">{card.place.name}</h2><p className="truncate text-xs text-white/55">{[card.place.admin, card.place.country].filter(Boolean).join(", ")}</p></div>
-        {summary && <div className="shrink-0 text-right"><span className="block text-[10px] uppercase tracking-wider text-white/45">Local time</span><time className="text-sm font-medium">{formatLocalTime(now, summary.timezone)}</time></div>}
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold">{card.place.name}</h2>
+          <p className="truncate text-xs text-white/55">
+            {[card.place.admin, card.place.country].filter(Boolean).join(", ")}
+          </p>
+        </div>
+        {summary && (
+          <div className="shrink-0 text-right">
+            <span className="block text-[10px] uppercase tracking-wider text-white/45">
+              Local time
+            </span>
+            <time
+              className="text-sm font-medium"
+              data-testid="comparison-local-time"
+            >
+              {formatLocalTime(now, summary.timezone)}{" "}
+              {timezoneLabel(now, summary.timezone)}
+            </time>
+          </div>
+        )}
       </div>
-      {!summary && card.status === "loading" && <p className="mt-8 min-h-64 text-sm text-white/60" role="status">Loading summary…</p>}
-      {!summary && card.status === "error" && <div className="glass-inset mt-8 min-h-64 rounded-2xl p-4" role="status"><p className="text-sm text-white/70">{card.error}</p><button type="button" onClick={onRetry} className={`${action} mt-4`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button></div>}
-      {summary && <>
-        <div className="mt-5 flex items-end justify-between gap-3"><p className="text-4xl font-light" data-testid="comparison-temperature">{T(summary.current.temperatureF)}°</p><p className="text-xs text-white/55">H {T(summary.today.highF)}° · L {T(summary.today.lowF)}°</p></div>
-        <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
-          <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">Humidity</dt><dd className="mt-1 text-sm font-semibold">{Math.round(summary.current.humidityPercent)}%</dd></div>
-          <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">UV</dt><dd className="mt-1 text-sm font-semibold">{Math.round(summary.today.uvMax)}</dd></div>
-          <div className="glass-inset rounded-2xl px-2 py-3"><dt className="text-[10px] uppercase tracking-wide text-white/50">Rain today</dt><dd className="mt-1 text-sm font-semibold">{summary.today.rainSoFarIn.toFixed(2)} in</dd></div>
-        </dl>
-        <section className="glass-inset mt-5 grid grid-cols-6 gap-1 rounded-2xl p-2" aria-label={`${card.place.name} next six hours`}>
-          {summary.hourly.map((hour) => { const label = decodeWMO(hour.code, hour.isDay).label; return <div key={hour.time.toISOString()} className="min-w-0 text-center" data-testid="comparison-hour" aria-label={`${label}, ${Math.round(hour.pop)}% chance, ${hour.precipitationIn.toFixed(2)} inches`}><time className="block text-[9px] text-white/50">{formatLocalHour(hour.time, summary.timezone)}</time><span className="block text-xs font-medium">{T(hour.tempF)}°</span><span className="block text-[9px] text-sky-200">{Math.round(hour.pop)}%</span><span className="block text-[8px] text-white/45">{hour.precipitationIn.toFixed(2)} in</span></div>; })}
-        </section>
-        <section className="mt-5 grid grid-cols-3 gap-2" aria-label={`${card.place.name} next three days`}>
-          {summary.daily.map((day) => { const label = decodeWMO(day.code).label; return <div key={day.date.toISOString()} className="glass-inset rounded-xl p-2 text-center" data-testid="comparison-day"><time className="block text-[10px] text-white/55">{formatLocalWeekday(day.date, summary.timezone)}</time><span className="mt-1 block truncate text-[9px] text-white/60" title={label}>{label}</span><span className="block text-xs">{T(day.highF)}° / {T(day.lowF)}°</span></div>; })}
-        </section>
-        {card.status === "stale" && <button type="button" onClick={onRetry} className={`${action} mt-3`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button>}
-        <div className="glass-divider mt-5 flex justify-end border-t pt-4"><button type="button" onClick={onOpen} className={action} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
-      </>}
+
+      {!summary && card.status === "loading" && (
+        <p className="mt-8 min-h-64 text-sm text-white/60" role="status">
+          Loading summary…
+        </p>
+      )}
+
+      {!summary && card.status === "error" && (
+        <div
+          className="glass-inset mt-8 min-h-64 rounded-2xl p-4"
+          role="status"
+        >
+          <p className="text-sm text-white/70">{card.error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className={`${action} mt-4`}
+            aria-label={`Retry ${card.place.name} comparison`}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {summary &&
+        (() => {
+          const condition = decodeWMO(
+            summary.current.code,
+            summary.current.isDay
+          );
+          const ConditionIcon = condition.Icon;
+
+          return (
+            <>
+              <div className="mt-5 flex items-end justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <ConditionIcon
+                    className="shrink-0 text-white/85"
+                    size={30}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p
+                      className="text-4xl font-light"
+                      data-testid="comparison-temperature"
+                    >
+                      {T(summary.current.temperatureF)}°
+                    </p>
+                    <p
+                      className="text-xs text-white/60"
+                      data-testid="comparison-feels-like"
+                    >
+                      Feels {T(summary.current.apparentF)}°
+                    </p>
+                  </div>
+                </div>
+                <div className="min-w-0 text-right">
+                  <p
+                    className="truncate text-sm"
+                    data-testid="comparison-current-condition"
+                    title={condition.label}
+                  >
+                    {condition.label}
+                  </p>
+                  <p className="text-xs text-white/55">
+                    H {T(summary.today.highF)}° · L {T(summary.today.lowF)}°
+                  </p>
+                </div>
+              </div>
+
+              <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
+                <div className="glass-inset rounded-2xl px-2 py-3">
+                  <dt className="text-[10px] uppercase tracking-wide text-white/50">
+                    Humidity
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold">
+                    {Math.round(summary.current.humidityPercent)}%
+                  </dd>
+                </div>
+                <div className="glass-inset rounded-2xl px-2 py-3">
+                  <dt className="text-[10px] uppercase tracking-wide text-white/50">
+                    UV
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold">
+                    {Math.round(summary.today.uvMax)}
+                  </dd>
+                </div>
+                <div className="glass-inset rounded-2xl px-2 py-3">
+                  <dt className="text-[10px] uppercase tracking-wide text-white/50">
+                    Rain today
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold">
+                    {summary.today.rainSoFarIn.toFixed(2)} in
+                  </dd>
+                </div>
+              </dl>
+
+              <section
+                className="glass-inset mt-5 grid grid-cols-6 gap-1 rounded-2xl p-2"
+                aria-label={`${card.place.name} next six hours`}
+              >
+                {summary.hourly.map((hour) => {
+                  const label = decodeWMO(hour.code, hour.isDay).label;
+                  return (
+                    <div
+                      key={hour.time.toISOString()}
+                      className="min-w-0 text-center"
+                      data-testid="comparison-hour"
+                      aria-label={`${label}, ${Math.round(
+                        hour.pop
+                      )}% chance, ${hour.precipitationIn.toFixed(2)} inches`}
+                    >
+                      <time className="block text-[9px] text-white/50">
+                        {formatLocalHour(hour.time, summary.timezone)}
+                      </time>
+                      <span className="block text-xs font-medium">
+                        {T(hour.tempF)}°
+                      </span>
+                      <span className="block text-[9px] text-sky-200">
+                        {Math.round(hour.pop)}%
+                      </span>
+                      <span className="block text-[8px] text-white/45">
+                        {hour.precipitationIn.toFixed(2)} in
+                      </span>
+                    </div>
+                  );
+                })}
+              </section>
+
+              <section
+                className="mt-5 grid grid-cols-3 gap-2"
+                aria-label={`${card.place.name} next three days`}
+              >
+                {summary.daily.map((day) => {
+                  const label = decodeWMO(day.code).label;
+                  return (
+                    <div
+                      key={day.date.toISOString()}
+                      className="glass-inset rounded-xl p-2 text-center"
+                      data-testid="comparison-day"
+                    >
+                      <time className="block text-[10px] text-white/55">
+                        {formatLocalWeekday(day.date, summary.timezone)}
+                      </time>
+                      <span
+                        className="mt-1 block truncate text-[9px] text-white/60"
+                        title={label}
+                      >
+                        {label}
+                      </span>
+                      <span className="block text-xs">
+                        {T(day.highF)}° / {T(day.lowF)}°
+                      </span>
+                    </div>
+                  );
+                })}
+              </section>
+
+              {card.status === "refreshing" && (
+                <p
+                  className="glass-inset mt-3 rounded-xl px-3 py-2 text-xs text-white/60"
+                  role="status"
+                  data-testid="comparison-refresh-status"
+                >
+                  Refreshing cached summary…
+                </p>
+              )}
+
+              {card.status === "stale" && (
+                <div className="glass-inset mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2">
+                  <p
+                    className="min-w-0 flex-1 text-xs text-amber-100/85"
+                    role="status"
+                    data-testid="comparison-refresh-status"
+                  >
+                    {card.error}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className={action}
+                    aria-label={`Retry ${card.place.name} comparison`}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              <div className="glass-divider mt-5 flex justify-end border-t pt-4">
+                <button
+                  type="button"
+                  onClick={onOpen}
+                  className={action}
+                  aria-label={`Open ${card.place.name} full forecast`}
+                >
+                  Open full forecast
+                </button>
+              </div>
+            </>
+          );
+        })()}
     </article>
   );
 }
 
-export default function ComparisonView({ places, unit, cache, onOpenFull }: Props) {
+export default function ComparisonView({
+  places,
+  unit,
+  cache,
+  onOpenFull,
+}: Props) {
   const { cards, retry } = useComparison(places, cache);
-  const now = new Date();
-  return <section aria-labelledby="comparison-title"><h1 id="comparison-title" className="mb-4 text-xl font-semibold">Compare saved locations</h1><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="comparison-grid">{cards.map((card) => <SummaryCard key={card.id} card={card} unit={unit} now={now} onOpen={() => onOpenFull(card.place)} onRetry={() => retry(card.place)} />)}</div></section>;
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <section aria-labelledby="comparison-title">
+      <h1 id="comparison-title" className="mb-4 text-xl font-semibold">
+        Compare saved locations
+      </h1>
+      <div
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        data-testid="comparison-grid"
+      >
+        {cards.map((card) => (
+          <SummaryCard
+            key={card.id}
+            card={card}
+            unit={unit}
+            now={now}
+            onOpen={() => onOpenFull(card.place)}
+            onRetry={() => retry(card.place)}
+          />
+        ))}
+      </div>
+    </section>
+  );
 }
