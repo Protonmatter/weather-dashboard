@@ -50,7 +50,7 @@ function SummaryCard({ card, unit, now, onOpen, onRetry }: {
           </section>
           {(card.status === "refreshing" || card.status === "stale") && <p className="mt-3 text-xs" role="status">{card.status === "refreshing" ? "Refreshing cached summary…" : card.error}</p>}
           {card.status === "stale" && <button type="button" onClick={onRetry} className={`${action} mt-2`} aria-label={`Retry ${card.place.name} comparison`}>Retry</button>}
-          <div className="glass-divider mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-[10px] text-white/45">Open-Meteo · Updated {formatLocalTime(summary.updatedAt, summary.timezone)}<button type="button" onClick={onOpen} className={`${action} text-white`} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
+          <div className="glass-divider mt-5 border-t pt-4 text-[10px]">Open-Meteo · {formatLocalTime(summary.updatedAt, summary.timezone)}<button type="button" onClick={onOpen} className={`${action} ml-3`} aria-label={`Open ${card.place.name} full forecast`}>Open full forecast</button></div>
         </>}
     </article>
   );

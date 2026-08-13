@@ -259,7 +259,7 @@ test("comparison cards preserve condition, rainfall, and update provenance", asy
   );
   await expect(paloAlto.getByText("Rain today", { exact: true })).toBeVisible();
   await expect(paloAlto.getByText(/in · modeled$/i)).toBeVisible();
-  await expect(paloAlto.getByText(/^Open-Meteo · Updated /)).toBeVisible();
+  await expect(paloAlto.getByText(/^Open-Meteo · \d/)).toBeVisible();
 });
 
 test("comparison local clocks retain timezone context and continue updating", async ({
@@ -339,7 +339,7 @@ test("cached comparison cards expose failed revalidation as stale", async ({
   await expect(paloAlto.getByRole("status")).toHaveText(
     "Comparison data is unavailable. Try again."
   );
-  await expect(paloAlto.getByText(/^Open-Meteo · Updated /)).toBeVisible();
+  await expect(paloAlto.getByText(/^Open-Meteo · \d/)).toBeVisible();
   await expect(
     paloAlto.getByRole("button", {
       name: "Retry Palo Alto comparison",
