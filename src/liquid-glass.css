@@ -1,0 +1,153 @@
+.forecast-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.forecast-overview > .contents {
+  display: contents;
+}
+
+.forecast-overview > .contents > div,
+.forecast-overview .glass-surface {
+  min-width: 0;
+}
+
+.forecast-overview__hero { grid-area: hero; }
+.forecast-overview__hourly { grid-area: hourly; }
+.forecast-overview__daily { grid-area: daily; }
+.forecast-overview__air { grid-area: air; }
+.forecast-overview__precip { grid-area: precip; }
+.forecast-overview__wind { grid-area: wind; }
+.forecast-overview__uv { grid-area: uv; }
+.forecast-overview__sunset { grid-area: sunset; }
+.forecast-overview__trend { grid-area: trend; }
+
+.forecast-overview__hero > .glass-surface,
+.forecast-overview__daily > .glass-surface,
+.forecast-overview__air > .glass-surface,
+.forecast-overview__precip > .glass-surface,
+.forecast-overview__wind > .glass-surface,
+.forecast-overview__uv > .glass-surface,
+.forecast-overview__sunset > .glass-surface,
+.forecast-overview__trend > .glass-surface {
+  height: 100%;
+}
+
+.forecast-overview__hourly > .glass-surface {
+  height: 100%;
+  margin-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .forecast-overview {
+    grid-template-areas:
+      "hero"
+      "hourly"
+      "daily"
+      "air"
+      "precip"
+      "wind"
+      "uv"
+      "sunset"
+      "trend";
+  }
+
+  .forecast-overview__hero .glass-inset {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .forecast-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "hero hero"
+      "hourly hourly"
+      "daily air"
+      "daily precip"
+      "wind uv"
+      "sunset trend";
+    gap: 1rem;
+    align-items: stretch;
+  }
+}
+
+@media (min-width: 1600px) and (min-aspect-ratio: 8 / 5) {
+  .forecast-overview {
+    grid-template-columns: minmax(390px, 1fr) repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "hero hourly hourly"
+      "daily air precip"
+      "daily wind uv"
+      "daily sunset trend";
+    gap: 1.25rem;
+  }
+
+  .forecast-overview__hero > .glass-surface {
+    padding: 1.4rem;
+  }
+}
+
+[data-target="cinema"] section.forecast-overview {
+  padding: 0;
+}
+
+[data-target="cinema"] .forecast-overview__hourly section,
+[data-target="cinema"] .forecast-overview__daily section,
+[data-target="cinema"] .forecast-overview__air section,
+[data-target="cinema"] .forecast-overview__precip section,
+[data-target="cinema"] .forecast-overview__wind section,
+[data-target="cinema"] .forecast-overview__uv section,
+[data-target="cinema"] .forecast-overview__sunset section,
+[data-target="cinema"] .forecast-overview__trend section {
+  padding: 1.25rem 1.4rem;
+}
+
+.weather-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 42%;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent, rgb(1 8 18 / 0.30) 42%, rgb(1 8 18 / 0.72)),
+    repeating-linear-gradient(90deg, transparent 0 7%, rgb(0 0 0 / 0.16) 7.2% 7.8%, transparent 8% 13%);
+  opacity: 0.52;
+}
+
+[data-scene="rain"] .weather-backdrop::after,
+[data-scene="storm"] .weather-backdrop::after {
+  background:
+    linear-gradient(180deg, transparent, rgb(1 8 18 / 0.24) 30%, rgb(1 8 18 / 0.78)),
+    radial-gradient(ellipse at 50% 100%, rgb(68 151 205 / 0.24), transparent 58%),
+    repeating-linear-gradient(90deg, transparent 0 7%, rgb(0 0 0 / 0.18) 7.2% 7.8%, transparent 8% 13%);
+  opacity: 0.72;
+}
+
+.map-glass-control {
+  min-height: 44px;
+  border: 1px solid rgb(255 255 255 / 0.20);
+  background: rgb(4 17 31 / 0.62);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 8px 22px rgb(0 0 0 / 0.28);
+}
+
+.map-glass-control:hover,
+.map-glass-control[aria-pressed="true"],
+.map-glass-control[aria-selected="true"] {
+  background: rgb(255 255 255 / 0.18);
+  border-color: rgb(255 255 255 / 0.34);
+}
+
+.map-glass-overlay {
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(4 17 31 / 0.78);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.11);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .forecast-overview .glass-surface {
+    transition: none;
+  }
+}
