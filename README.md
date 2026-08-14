@@ -39,19 +39,17 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
   users get static directional arrows and manual time control. Viewport grids are bounded
   to 63–117 samples and load only when the map approaches the screen; an active stationary
   grid revalidates when its 10-minute in-memory cache window expires.
-- **Observed radar mode** — the same map switches to recent radar observations without
-  losing pan, zoom, or the selected-place marker. U.S. and territory locations use NOAA/NWS
-  MRMS; other countries use RainViewer's public non-commercial feed. Radar code and network
-  calls remain dormant until the mode is selected, and a loaded catalogue revalidates every
-  two minutes from its original network acquisition time. While Forecast is active, the last
-  complete radar layer is retained but replacement imagery is not requested until Radar is
-  selected again. Radar chunk failures stay inside radar mode; wide maps enforce a one-world
-  minimum zoom, NOAA views that cross the dateline use aligned in-world image segments, and
-  imagery failures retain the
-  last complete layer only for the same viewport, with its matching observation time, and
-  expose an explicit retry.
-  Both timelines are independently
-  scrubbable and respect reduced-motion, offscreen, and background-tab pause states.
+- **Unified precipitation timeline** — the shared map preserves provider-native radar
+  observations through an explicit `NOW` boundary, then continues into clearly labelled
+  Open-Meteo GFS hour-ending precipitation for the next 24 hours (or 48 hours on demand).
+  U.S. and territory observations use NOAA/NWS MRMS; other countries use RainViewer's public
+  non-commercial feed. Observation and forecast overlays, legends, attribution, accessibility
+  text, and failure states remain distinct. The timeline reuses the map's already-loaded GFS
+  grid and does not issue a second forecast request. Radar code and network calls remain
+  dormant until the timeline is selected; the catalogue revalidates every two minutes.
+  Retained imagery is limited to the same live place/viewport context, is hidden while a new
+  viewport settles, and is cleared when the provider reports an empty catalogue. Playback
+  respects reduced-motion, offscreen, and background-tab pause states.
 - **Precipitation (ensemble)** — p10–p90 fan chart with the median traced through it, plus 24h
   accumulation quantiles. The headline percentage is the share of ensemble members whose 24h
   total clears 0.01″, not a deterministic PoP. Scrub the fan (pointer or arrow keys) to read
@@ -70,6 +68,7 @@ Design decisions live in `docs/`, written before implementation:
 - [RFC 0003 — Inspection and Drill-Down](docs/rfcs/0003-inspection-and-drill-down.md)
 - [RFC 0004 — Interactive Forecast Map](docs/rfcs/0004-interactive-forecast-map.md)
 - [RFC 0005 — Local Weather Context and Observed Radar](docs/rfcs/0005-local-context-and-radar.md)
+- [RFC 0006 — Unified Precipitation Timeline](docs/rfcs/0006-unified-precipitation-timeline.md)
 - [ADR 0002 — Defer WebGPU; ship a capability probe](docs/adr/0002-no-webgpu-yet.md)
 
 ## Pipeline
@@ -187,7 +186,7 @@ Every source is keyless and CORS-enabled, which is why this needs no backend.
 | Source | Used for |
 | --- | --- |
 | [Open-Meteo Forecast](https://open-meteo.com/) | Current conditions, hourly, 10-day, UV, sunrise/sunset |
-| [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) | Bounded 48-hour map grids: temperature, mean-sea-level pressure, precipitation, and wind |
+| [Open-Meteo GFS](https://open-meteo.com/en/docs/gfs-api) | Bounded 48-hour map grids and the modeled future timeline segment: temperature, mean-sea-level pressure, precipitation, and wind |
 | [Open-Meteo Ensemble](https://open-meteo.com/en/docs/ensemble-api) | GFS ensemble members for the precipitation fan, the temperature band, and temperature verification |
 | [Open-Meteo Air Quality](https://open-meteo.com/en/docs/air-quality-api) | US AQI |
 | [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) | City search, population-ranked |
@@ -210,6 +209,12 @@ of silently assigning RainViewer. RainViewer attribution remains visible in the 
 layer can mean either no precipitation or no provider coverage; the UI says so rather than
 claiming a clear sky. Image delivery failures are reported separately and are never described
 as valid blank coverage.
+
+The precipitation timeline is deliberately not a simulated-radar product. Its left segment is
+observed reflectivity from the selected radar provider; its right segment is Open-Meteo GFS
+hour-ending modeled precipitation. The source badge, timestamp, legend, attribution, renderer,
+and accessible value text all switch at `NOW`. A provider failure disables only its own segment:
+radar failure leaves modeled precipitation usable, and GFS failure leaves observations usable.
 
 "Rain today" sums Open-Meteo's 15-minute liquid rain and shower estimates through the current
 provider timestamp in the selected place's local calendar day. The 26-hour lookback covers
@@ -239,7 +244,7 @@ location** is always explicit.
 Saved place metadata stays in this browser under `wx.saved-locations.v1`; the first-run
 decision is stored separately under `wx.location-onboarding.v1`. Weather responses and
 coordinates are not sent to an application backend, and there is no account, cookie,
-cross-device synchronization, or telemetry. Selecting Radar separately requests the visible
+cross-device synchronization, or telemetry. Selecting **Precipitation timeline** requests the visible
 map area under the provider policy described above. Clearing site data removes the saved
 list and onboarding choice; older app versions safely ignore both versioned keys.
 
@@ -284,6 +289,7 @@ src/
     search.ts        provider fan-out, merge, de-duplication, ranking
     ensemble.ts      quantiles and ensemble summarisation
     map/             Web Mercator, grids, contours, H/L detection, rendering state
+    precipitation/   unified observation/forecast timeline and presentation contracts
     radar/           NOAA/RainViewer selection, schema validation, bounded image URLs
     weather.ts       forecast assembly; ensembleFor() is the provider seam
     locations/       validated browser-local saved-place persistence
@@ -296,7 +302,7 @@ src/
     units.ts         conversion, colour ramp, formatting
     wmo.ts           WMO 4677 code decoding
     providers/       one adapter per external service, typed at the boundary
-  hooks/             search, comparison, forecast-map, and radar request lifecycles
+  hooks/             search, comparison, forecast-map, precipitation, and radar request lifecycles
   components/        presentational only
 ```
 
@@ -328,7 +334,7 @@ build-time configuration, never search-box input.
 npm run typecheck   # tsc --noEmit, strict + noUncheckedIndexedAccess
 npm test            # 298 tests
 npm run build
-npm run size        # initial JS ≤73 kB; total JS ≤96 kB gzip
+npm run size        # initial JS ≤73 kB; total JS ≤99 kB gzip
 ```
 
 CI runs all four on every push and pull request.

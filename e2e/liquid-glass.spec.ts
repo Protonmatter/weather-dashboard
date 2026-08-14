@@ -74,7 +74,7 @@ test("glass restyling preserves metric inspection semantics", async ({ page }) =
   await expect(page.getByTestId("weather-metric-detail")).toHaveCount(0);
 });
 
-test("map and radar controls retain readable depth and tab semantics", async ({ page }) => {
+test("map and precipitation controls retain readable depth and tab semantics", async ({ page }) => {
   await bootFallbackDashboard(page);
   const shell = page.getByTestId("forecast-map-shell");
   await shell.scrollIntoViewIfNeeded();
@@ -90,7 +90,7 @@ test("map and radar controls retain readable depth and tab semantics", async ({ 
   expect(mapTokens.blur).toBe("20px");
   expect(mapTokens.alpha).toBeCloseTo(0.46, 5);
 
-  const radarTab = page.getByRole("tab", { name: "Radar observations" });
+  const radarTab = page.getByRole("tab", { name: "Precipitation timeline" });
   await expect(radarTab).toBeVisible();
   await expect(radarTab).toBeEnabled();
   const before = await radarTab.evaluate((node) => getComputedStyle(node).backgroundColor);

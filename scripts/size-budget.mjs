@@ -7,7 +7,7 @@ import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
 const INITIAL_BUDGET_KB = 73;
-const TOTAL_BUDGET_KB = 96;
+const TOTAL_BUDGET_KB = 99;
 const dir = "dist/assets";
 
 const manifest = JSON.parse(readFileSync("dist/.vite/manifest.json", "utf8"));

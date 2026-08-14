@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CloudRain, Map as MapIcon, Minus, Navigation, Pause, Play, Plus, RotateCcw, Wind } from "lucide-react";
 import { Card } from "./Card";
-import { RadarPanelBoundary } from "./RadarPanelBoundary";
+import { PrecipitationTimelineBoundary } from "./PrecipitationTimelineBoundary";
 import { useForecastMap } from "../hooks/useForecastMap";
 import { createGridSpec, frameAt, mapHeightForTarget } from "../lib/map/grid";
 import { frameSummary, renderMap } from "../lib/map/render";
@@ -18,9 +18,22 @@ import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 7;
 const PLAYBACK_INTERVAL_MS = 1_600;
-const CONTROL = "inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
-const RadarPanel = lazy(() => import("./RadarPanel"));
-type MapMode = "forecast" | "radar";
+const CONTROL = "glass-control glass-inset inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
+const PrecipitationTimelinePanel = lazy(() => import("./PrecipitationTimelinePanel"));
+type MapMode = "forecast" | "precipitation";
+
+function precipitationSessionKey(place: MapProps["place"]): string {
+  return JSON.stringify([
+    place.lat,
+    place.lon,
+    place.name,
+    place.admin,
+    place.country,
+    place.cc,
+    place.postcode ?? null,
+    place.source ?? null,
+  ]);
+}
 
 function minimumZoomForWidth(width: number): number {
   let zoom = MIN_ZOOM;
@@ -83,7 +96,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
   const forecastTabRef = useRef<HTMLButtonElement>(null);
-  const radarTabRef = useRef<HTMLButtonElement>(null);
+  const precipitationTabRef = useRef<HTMLButtonElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchScale = useRef(1);
   const wheelDelta = useRef(0);
@@ -107,8 +120,8 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const [mapVisible, setMapVisible] = useState(true);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
   const [mode, setMode] = useState<MapMode>("forecast");
-  const [radarRequested, setRadarRequested] = useState(false);
-  const [radarHost, setRadarHost] = useState<HTMLDivElement | null>(null);
+  const [precipitationRequested, setPrecipitationRequested] = useState(false);
+  const [precipitationHost, setPrecipitationHost] = useState<HTMLDivElement | null>(null);
 
   const tileConfig = useMemo(() => {
     try {
@@ -195,7 +208,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!frame || !grid) {
+    if (mode !== "forecast" || !frame || !grid) {
       const context = canvas.getContext("2d");
       context?.clearRect(0, 0, canvas.width, canvas.height);
       return;
@@ -210,7 +223,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
       height: viewport.height,
       wind: wind && reducedMotion,
     });
-  }, [frame, grid, layer, reducedMotion, viewport.height, viewport.width, wind]);
+  }, [frame, grid, layer, mode, reducedMotion, viewport.height, viewport.width, wind]);
 
   useEffect(() => {
     const canvas = windCanvasRef.current;
@@ -345,7 +358,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   };
 
   const selectMode = (nextMode: MapMode): void => {
-    if (nextMode === "radar") setRadarRequested(true);
+    if (nextMode === "precipitation") setPrecipitationRequested(true);
     setMode(nextMode);
   };
 
@@ -356,15 +369,16 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
 
   const onModeTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: MapMode): void => {
     let nextMode: MapMode | null = null;
-    if (event.key === "ArrowRight") nextMode = currentMode === "forecast" ? "radar" : "forecast";
-    if (event.key === "ArrowLeft") nextMode = currentMode === "forecast" ? "radar" : "forecast";
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      nextMode = currentMode === "forecast" ? "precipitation" : "forecast";
+    }
     if (event.key === "Home") nextMode = "forecast";
-    if (event.key === "End") nextMode = "radar";
+    if (event.key === "End") nextMode = "precipitation";
     if (!nextMode) return;
 
     event.preventDefault();
     selectMode(nextMode);
-    (nextMode === "forecast" ? forecastTabRef : radarTabRef).current?.focus();
+    (nextMode === "forecast" ? forecastTabRef : precipitationTabRef).current?.focus();
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -438,7 +452,12 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const busy = mode === "forecast" && (state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid));
 
   return (
-    <Card title={mode === "forecast" ? "48-hour forecast map" : "Radar observations map"} icon={MapIcon} className="mt-4" data-testid="forecast-map-card">
+    <Card
+      title={mode === "forecast" ? "48-hour forecast map" : "Precipitation timeline map"}
+      icon={MapIcon}
+      className="mt-4"
+      data-testid="forecast-map-card"
+    >
       <div className="mb-3 flex gap-1" role="tablist" aria-label="Weather map mode">
         <button
           ref={forecastTabRef}
@@ -455,18 +474,18 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
           <MapIcon size={14} aria-hidden="true" /> Forecast fields
         </button>
         <button
-          ref={radarTabRef}
-          id="radar-map-tab"
+          ref={precipitationTabRef}
+          id="precipitation-map-tab"
           type="button"
           role="tab"
-          aria-selected={mode === "radar"}
-          aria-controls="radar-map-mode-panel"
-          tabIndex={mode === "radar" ? 0 : -1}
-          className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "radar" ? "bg-white/25" : ""}`}
-          onClick={() => selectMode("radar")}
-          onKeyDown={(event) => onModeTabKeyDown(event, "radar")}
+          aria-selected={mode === "precipitation"}
+          aria-controls="precipitation-map-mode-panel"
+          tabIndex={mode === "precipitation" ? 0 : -1}
+          className={`${CONTROL} min-h-11 gap-1.5 px-3 text-xs ${mode === "precipitation" ? "bg-white/25" : ""}`}
+          onClick={() => selectMode("precipitation")}
+          onKeyDown={(event) => onModeTabKeyDown(event, "precipitation")}
         >
-          <CloudRain size={14} aria-hidden="true" /> Radar observations
+          <CloudRain size={14} aria-hidden="true" /> Precipitation timeline
         </button>
       </div>
 
@@ -506,7 +525,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         style={{ height: size.height, touchAction: "none", userSelect: "none" }}
         tabIndex={0}
         role="region"
-        aria-label={`Interactive ${mode === "forecast" ? "forecast" : "radar"} map. Arrow keys pan, plus and minus zoom, Home recentres.`}
+        aria-label={`Interactive ${mode === "forecast" ? "forecast" : "precipitation timeline"} map. Arrow keys pan, plus and minus zoom, Home recentres.`}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -532,7 +551,13 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
             />
           ))}
         </div>
-        <canvas ref={canvasRef} hidden={mode !== "forecast"} className="absolute inset-0 pointer-events-none" role="img" aria-label={summary} />
+        <canvas
+          ref={canvasRef}
+          hidden={mode !== "forecast"}
+          className="absolute inset-0 pointer-events-none"
+          role="img"
+          aria-label={summary}
+        />
         <canvas
           ref={windCanvasRef}
           hidden={mode !== "forecast"}
@@ -540,13 +565,18 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
           aria-hidden="true"
           data-testid="forecast-map-wind"
         />
-        <div ref={setRadarHost} className="absolute inset-0 pointer-events-none" aria-hidden={mode !== "radar"} />
+        <div
+          ref={setPrecipitationHost}
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden={mode !== "precipitation"}
+        />
 
         {marker.x >= 0 && marker.x <= viewport.width && marker.y >= 0 && marker.y <= viewport.height && (
           <div
             className="absolute z-20 -ml-2 -mt-2 h-4 w-4 rounded-full border-2 border-white bg-sky-400 shadow-lg"
             style={{ left: marker.x, top: marker.y }}
             aria-hidden="true"
+            data-testid="forecast-map-marker"
           />
         )}
 
@@ -562,19 +592,21 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
           </button>
         </div>
 
-        {mode === "forecast" && <div
-          className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-white/90"
-          data-testid="forecast-map-legend"
-        >
-          <div className="h-1.5 w-full rounded-full" style={{ background: `linear-gradient(90deg, ${currentLegend.stops})` }} aria-hidden="true" />
-          <div className="mt-1 flex justify-between gap-2" aria-hidden="true">
-            {currentLegend.labels.map((label) => <span key={label}>{label}</span>)}
+        {mode === "forecast" && (
+          <div
+            className="absolute bottom-2 left-2 max-w-[70%] rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-white/90"
+            data-testid="forecast-map-legend"
+          >
+            <div className="h-1.5 w-full rounded-full" style={{ background: `linear-gradient(90deg, ${currentLegend.stops})` }} aria-hidden="true" />
+            <div className="mt-1 flex justify-between gap-2" aria-hidden="true">
+              {currentLegend.labels.map((label) => <span key={label}>{label}</span>)}
+            </div>
+            <p className="mt-1">
+              {currentLegend.note}
+              {wind ? reducedMotion ? " · arrows point toward motion" : " · particles follow forecast flow" : ""}
+            </p>
           </div>
-          <p className="mt-1">
-            {currentLegend.note}
-            {wind ? reducedMotion ? " · arrows point toward motion" : " · particles follow forecast flow" : ""}
-          </p>
-        </div>}
+        )}
 
         {tileConfig && (
           <a
@@ -596,102 +628,108 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         )}
       </div>
 
-      {mode === "forecast" && <>
-      <div className="mt-3">
-        <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-xs">
-          <button
-            type="button"
-            className={`${CONTROL} min-h-11 gap-1.5 px-3 disabled:cursor-not-allowed disabled:opacity-50`}
-            onClick={() => setPlaying((value) => !value)}
-            disabled={!grid || reducedMotion}
-            aria-label={playing ? "Pause forecast animation" : "Play forecast animation"}
-            title={reducedMotion ? "Playback is off because reduced motion is enabled" : undefined}
-            data-testid="forecast-map-playback"
-          >
-            {playing ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-            {playing ? "Pause" : "Play"}
-          </button>
-          <span className="truncate font-medium">{frame ? validTime(frame.time) : "Valid time unavailable"}</span>
-          <span className="text-white/60">UTC · {viewport.zoom.toFixed(0)}×</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0, (grid?.times.length ?? 1) - 1)}
-          value={Math.min(timeIndex, Math.max(0, (grid?.times.length ?? 1) - 1))}
-          disabled={!grid}
-          onChange={(event) => {
-            setPlaying(false);
-            setTimeIndex(Number(event.currentTarget.value));
-          }}
-          className="w-full min-h-11 accent-white"
-          aria-label="Forecast valid time"
-          aria-valuetext={frame ? validTime(frame.time) : "Unavailable"}
-          data-testid="forecast-map-time"
-        />
-      </div>
+      {mode === "forecast" && (
+        <>
+          <div className="mt-3">
+            <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-xs">
+              <button
+                type="button"
+                className={`${CONTROL} min-h-11 gap-1.5 px-3 disabled:cursor-not-allowed disabled:opacity-50`}
+                onClick={() => setPlaying((value) => !value)}
+                disabled={!grid || reducedMotion}
+                aria-label={playing ? "Pause forecast animation" : "Play forecast animation"}
+                title={reducedMotion ? "Playback is off because reduced motion is enabled" : undefined}
+                data-testid="forecast-map-playback"
+              >
+                {playing ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+                {playing ? "Pause" : "Play"}
+              </button>
+              <span className="truncate font-medium">{frame ? validTime(frame.time) : "Valid time unavailable"}</span>
+              <span className="text-white/60">UTC · {viewport.zoom.toFixed(0)}×</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, (grid?.times.length ?? 1) - 1)}
+              value={Math.min(timeIndex, Math.max(0, (grid?.times.length ?? 1) - 1))}
+              disabled={!grid}
+              onChange={(event) => {
+                setPlaying(false);
+                setTimeIndex(Number(event.currentTarget.value));
+              }}
+              className="w-full min-h-11 accent-white"
+              aria-label="Forecast valid time"
+              aria-valuetext={frame ? validTime(frame.time) : "Unavailable"}
+              data-testid="forecast-map-time"
+            />
+          </div>
 
-      <div className="mt-1 min-h-5 text-[11px] text-white/62" aria-live={playing ? "off" : "polite"}>
-        {!enabled && "Map waits for a live selected-place forecast."}
-        {(state.status === "stale" || state.status === "error") && (
-          <span>
-            {state.error}{" "}
-            <button
-              type="button"
-              className={`${CONTROL} ml-1 min-h-11 min-w-11 gap-1 px-2 align-middle underline`}
-              onClick={retry}
-            >
-              <RotateCcw size={11} aria-hidden="true" />Retry
-            </button>
-          </span>
-        )}
-        {grid && frame && state.status !== "stale" && frameSummary(frame, layer, unit)}
-        {grid && frame && state.status !== "stale" && (
-          <span>
-            {reducedMotion
-              ? " · Motion reduced; use the time slider to inspect forecast hours."
-              : playing
-                ? " · Playing hourly forecast frames."
-                : " · Forecast playback paused."}
-          </span>
-        )}
-        {!tileConfig && " Base tiles are unavailable because tile configuration is invalid."}
-      </div>
-      </>}
+          <div className="mt-1 min-h-5 text-[11px] text-white/62" aria-live={playing ? "off" : "polite"}>
+            {!enabled && "Map waits for a live selected-place forecast."}
+            {(state.status === "stale" || state.status === "error") && (
+              <span>
+                {state.error}{" "}
+                <button
+                  type="button"
+                  className={`${CONTROL} ml-1 min-h-11 min-w-11 gap-1 px-2 align-middle underline`}
+                  onClick={retry}
+                >
+                  <RotateCcw size={11} aria-hidden="true" />Retry
+                </button>
+              </span>
+            )}
+            {grid && frame && state.status !== "stale" && frameSummary(frame, layer, unit)}
+            {grid && frame && state.status !== "stale" && (
+              <span>
+                {reducedMotion
+                  ? " · Motion reduced; use the time slider to inspect forecast hours."
+                  : playing
+                    ? " · Playing hourly forecast frames."
+                    : " · Forecast playback paused."}
+              </span>
+            )}
+            {!tileConfig && " Base tiles are unavailable because tile configuration is invalid."}
+          </div>
+        </>
+      )}
 
-      {!radarRequested && (
+      {!precipitationRequested && (
         <div
-          id="radar-map-mode-panel"
+          id="precipitation-map-mode-panel"
           role="tabpanel"
-          aria-labelledby="radar-map-tab"
+          aria-labelledby="precipitation-map-tab"
           hidden
         />
       )}
-      {radarRequested && (
-        <RadarPanelBoundary active={mode === "radar"} onReturnToForecast={returnToForecast}>
+      {precipitationRequested && (
+        <PrecipitationTimelineBoundary active={mode === "precipitation"} onReturnToForecast={returnToForecast}>
           <Suspense fallback={(
             <div
-              id="radar-map-mode-panel"
+              id="precipitation-map-mode-panel"
               role="tabpanel"
-              aria-labelledby="radar-map-tab"
-              hidden={mode !== "radar"}
+              aria-labelledby="precipitation-map-tab"
+              hidden={mode !== "precipitation"}
               className="mt-3 min-h-16 text-xs text-white/60"
             >
-              <div role="status">Loading radar controls…</div>
+              <div role="status">Loading precipitation timeline controls…</div>
             </div>
           )}>
-            <RadarPanel
+            <PrecipitationTimelinePanel
+              key={precipitationSessionKey(place)}
               place={place}
               timezone={timezone}
               viewport={viewport}
-              overlayHost={radarHost}
-              active={mode === "radar"}
+              overlayHost={precipitationHost}
+              active={mode === "precipitation"}
               reducedMotion={reducedMotion}
               mapVisible={mapVisible}
               pageVisible={pageVisible}
+              forecastState={state}
+              forecastGrid={grid}
+              onRetryForecast={retry}
             />
           </Suspense>
-        </RadarPanelBoundary>
+        </PrecipitationTimelineBoundary>
       )}
     </Card>
   );

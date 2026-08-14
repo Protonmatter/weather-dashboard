@@ -4,6 +4,11 @@
 
 **Date:** 2026-08-09
 
+> **Extended by RFC 0006:** The provider-native observation contract in this RFC remains in
+> force, but the observation-only Radar tab is replaced by the observed segment of a unified
+> precipitation timeline. RFC 0006 defines the explicit transition at `NOW` into modeled GFS
+> precipitation and supersedes this RFC only where it describes separate map timelines.
+
 ## 1. Decision
 
 The dashboard exposes selected-place local time, inspectable weather metrics, deterministic
@@ -59,9 +64,10 @@ Every metric is a native button with a minimum 44-pixel target:
 - Escape closes the persistent explanation while the trigger retains focus;
 - changing the selected place clears stale preview and pinned state.
 
-The map's Forecast and Radar controls are tabs. Pan, zoom, keyboard arrows, `+`, `-`, Home,
-base tiles, and the selected-place marker are shared. Each mode owns its timeline so switching
-modes does not reinterpret forecast hours as observation frames.
+The map's Forecast fields and Precipitation timeline controls are tabs. Pan, zoom, keyboard
+arrows, `+`, `-`, Home, base tiles, and the selected-place marker are shared. The unified
+timeline preserves observation and modeled-forecast identities across a visible `NOW`
+boundary; it never reinterprets forecast hours as observation frames.
 
 Animation stops when reduced motion is requested, when the map is offscreen, or when the page
 is hidden. Manual sliders remain available. Reduced motion also disables star, cloud, and fog
@@ -71,7 +77,7 @@ and bounded; no random particle churn occurs during React renders.
 ## 4. Radar lifecycle and safety
 
 Radar provider code is split into a second lazy chunk. Neither metadata endpoint is contacted
-until the user first selects Radar. Requests use the common abort, timeout, transient retry,
+until the user first selects Precipitation timeline. Requests use the common abort, timeout, transient retry,
 circuit-breaker, and two-minute response-cache boundary. Once loaded, radar schedules
 revalidation when that freshness window expires. Cache hits preserve the original network
 acquisition timestamp, so changing locations cannot postpone provider refresh indefinitely;
@@ -79,7 +85,7 @@ an already-expired cache hit schedules immediate revalidation.
 The bounded NOAA catalogue query orders valid times newest-first before applying its
 1,000-record cap; parsed frames are restored to chronological playback order.
 When Forecast is active, the last complete radar layer remains in memory but no candidate
-imagery is requested; a current-viewport replacement begins only when Radar is selected again.
+imagery is requested; a current-viewport replacement begins only when the observed segment is selected again.
 
 Viewport changes settle for 200 milliseconds before either provider rebuilds candidate
 imagery. NOAA bounding boxes and export dimensions come from that same settled viewport, so
@@ -99,6 +105,10 @@ Image sets become visible only after the complete layer loads. A failed replacem
 the prior successful layer and its matching observation time when it belongs to the same
 place and viewport, exposes an imagery retry, and pauses playback until a complete replacement
 loads. A pan, zoom, or resize removes a prior-viewport layer if its replacement fails.
+The live viewport identity is authoritative while the 200-millisecond settled viewport is used
+only to construct bounded provider requests. Late load/error events carry their settled context
+and are rejected after the live context changes. An explicitly empty provider catalogue clears
+same-context retained imagery so a prior frame cannot reappear as current coverage.
 
 ## 5. Failure and verification
 

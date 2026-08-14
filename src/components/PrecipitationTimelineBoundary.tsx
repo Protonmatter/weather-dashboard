@@ -1,28 +1,28 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-interface RadarPanelBoundaryProps {
+interface PrecipitationTimelineBoundaryProps {
   active: boolean;
   children: ReactNode;
   onReturnToForecast: () => void;
 }
 
-interface RadarPanelBoundaryState {
+interface PrecipitationTimelineBoundaryState {
   failed: boolean;
 }
 
-/** Contains delivery/runtime failures from the optional radar chunk inside radar mode. */
-export class RadarPanelBoundary extends Component<
-  RadarPanelBoundaryProps,
-  RadarPanelBoundaryState
+/** Contains failures from the optional precipitation chunk inside precipitation mode. */
+export class PrecipitationTimelineBoundary extends Component<
+  PrecipitationTimelineBoundaryProps,
+  PrecipitationTimelineBoundaryState
 > {
-  override state: RadarPanelBoundaryState = { failed: false };
+  override state: PrecipitationTimelineBoundaryState = { failed: false };
 
-  static getDerivedStateFromError(): RadarPanelBoundaryState {
+  static getDerivedStateFromError(): PrecipitationTimelineBoundaryState {
     return { failed: true };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("Radar panel module failed", error, info);
+    console.error("Precipitation timeline module failed", error, info);
   }
 
   override render(): ReactNode {
@@ -30,15 +30,15 @@ export class RadarPanelBoundary extends Component<
 
     return (
       <div
-        id="radar-map-mode-panel"
+        id="precipitation-map-mode-panel"
         role="tabpanel"
-        aria-labelledby="radar-map-tab"
+        aria-labelledby="precipitation-map-tab"
         hidden={!this.props.active}
         className="mt-3"
-        data-testid="radar-panel-error"
+        data-testid="precipitation-panel-error"
       >
         <div role="alert" className="text-xs text-white/75">
-          <p>Radar controls could not be loaded. Forecast fields remain available.</p>
+          <p>Precipitation timeline controls could not be loaded. Forecast fields remain available.</p>
           <button
             type="button"
             className="mt-3 min-h-11 rounded-xl border border-white/25 bg-white/10 px-3 underline"

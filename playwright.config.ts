@@ -35,6 +35,9 @@ export default defineConfig({
     {
       name: "visual",
       testMatch: visualSpec,
+      // Full-page perceptual captures contend for browser/GPU resources when every case
+      // runs concurrently, which can produce a transient hash from a partially painted frame.
+      fullyParallel: false,
       use: {
         ...devices["Desktop Chrome"],
         colorScheme: "dark",

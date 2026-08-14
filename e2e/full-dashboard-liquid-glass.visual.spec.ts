@@ -6,13 +6,24 @@ const HASH_SIZE = 8;
 const MAX_HASH_DISTANCE = 4;
 const MAX_HEIGHT_DRIFT = 32;
 
-const BASELINES = {
-  phone: { width: 390, height: 4129, dHash: "babe8e9efec6d69e" },
-  tablet: { width: 1180, height: 3058, dHash: "d2d47fe371761b3f" },
-  cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
+const PLATFORM_BASELINES = {
+  linux: {
+    phone: { width: 390, height: 4129, dHash: "babe8e9efec6d69e" },
+    tablet: { width: 1180, height: 3058, dHash: "d2d47fe371761b3f" },
+    cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
+  },
+  win32: {
+    phone: { width: 390, height: 4003, dHash: "babeae9ef6d6d6be" },
+    tablet: { width: 1180, height: 3040, dHash: "d2d47f6371771b3f" },
+    cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
+  },
 } as const;
 
-type ScenarioName = keyof typeof BASELINES;
+type VisualPlatform = keyof typeof PLATFORM_BASELINES;
+type ScenarioName = keyof (typeof PLATFORM_BASELINES)[VisualPlatform];
+
+const BASELINES = PLATFORM_BASELINES[process.platform as VisualPlatform];
+if (!BASELINES) throw new Error(`visual baselines are not calibrated for ${process.platform}`);
 
 interface DecodedPng {
   width: number;
