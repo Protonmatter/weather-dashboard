@@ -1019,6 +1019,47 @@ test("preserves forecast selection while a panned viewport grid loads", async ({
   }
 });
 
+test("drops retained forecast frames when a panned viewport replacement fails", async ({ page }) => {
+  let gfsRequests = 0;
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      gfsRequests += 1;
+      if (gfsRequests === 2) {
+        return route.fulfill({ status: 400, json: { error: "forced replacement failure" } });
+      }
+      return route.fulfill({ json: mapFixture(new URL(route.request().url())) });
+    }
+  );
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+  await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled({ timeout: 15_000 });
+  const timeline = page.getByTestId("precipitation-time");
+  await timeline.fill((await timeline.getAttribute("max"))!);
+  await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+  const selectedForecastValue = await timeline.inputValue();
+
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(() => gfsRequests, { timeout: 15_000 }).toBe(2);
+  await expect(page.getByText("Modeled forecast precipitation could not be loaded."))
+    .toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByTestId("precipitation-source")).toContainText("OBSERVED");
+  await expect.poll(async () => Number(await timeline.getAttribute("max")))
+    .toBeLessThan(Number(selectedForecastValue));
+  await expect(timeline).toHaveValue(String(radarFrames.at(-1)!));
+  await expect(page.getByTestId("precipitation-forecast-overlay")).toBeHidden();
+
+  await page.getByRole("button", { name: "Retry forecast" }).click();
+  await expect.poll(() => gfsRequests, { timeout: 15_000 }).toBe(3);
+  await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled({ timeout: 15_000 });
+  await expect(timeline).toHaveAttribute("max", selectedForecastValue);
+});
+
 test("clears retained radar imagery when a refreshed catalogue is empty", async ({ page }) => {
   await page.clock.install();
   let catalogueRequests = 0;
@@ -1380,6 +1421,49 @@ test("refreshes a stationary map grid when its cache entry expires", async ({ pa
 
   await page.clock.runFor(MAP_FORECAST_CACHE_TTL_MS + 500);
   await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+});
+
+test("retains a current-viewport forecast grid and exposes retry when refresh fails", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
+  let mapRequests = 0;
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      mapRequests += 1;
+      if (mapRequests === 2) {
+        return route.fulfill({ status: 400, json: { error: "forced refresh failure" } });
+      }
+      return route.fulfill({ json: mapFixture(new URL(route.request().url())) });
+    }
+  );
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+  const timeline = page.getByTestId("precipitation-time");
+  await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled({ timeout: 15_000 });
+  await timeline.fill((await timeline.getAttribute("max"))!);
+  await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+  const forecastOverlay = page.getByTestId("precipitation-forecast-overlay");
+  await expect.poll(() => canvasHasVisiblePixels(forecastOverlay)).toBe(true);
+
+  await page.clock.runFor(MAP_FORECAST_CACHE_TTL_MS + 500);
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(2);
+  await expect(page.getByText(
+    "Modeled forecast precipitation could not be refreshed. Previously loaded forecast remains visible."
+  )).toBeVisible();
+  const retry = page.getByRole("button", { name: "Retry forecast" });
+  await expect(retry).toBeVisible();
+  await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+  await expect.poll(() => canvasHasVisiblePixels(forecastOverlay)).toBe(true);
+
+  await retry.click();
+  await page.clock.runFor(500);
+  await expect.poll(() => mapRequests, { timeout: 15_000 }).toBe(3);
+  await expect(page.getByText(
+    "Modeled forecast precipitation could not be refreshed. Previously loaded forecast remains visible."
+  )).toHaveCount(0);
 });
 
 test("supports keyboard layer, pan, zoom, and recenter controls", async ({ page }) => {

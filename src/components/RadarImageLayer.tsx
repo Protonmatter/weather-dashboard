@@ -12,6 +12,7 @@ export interface RadarImageSpec {
 
 interface LoadedLayer {
   contextKey: string;
+  sourceKey: string;
   requestKey: string;
   token: string;
   images: RadarImageSpec[];
@@ -25,6 +26,7 @@ interface LoadProgress {
 interface RadarImageLayerProps {
   active: boolean;
   contextKey: string;
+  sourceKey: string;
   requestKey: string;
   retryGeneration: number;
   images: RadarImageSpec[];
@@ -37,6 +39,7 @@ interface RadarImageLayerProps {
 export function RadarImageLayer({
   active,
   contextKey,
+  sourceKey,
   requestKey,
   retryGeneration,
   images,
@@ -50,7 +53,9 @@ export function RadarImageLayer({
   const visibleLayer = shouldDisplayRetainedRadarLayer(
     loadedLayer?.contextKey ?? null,
     contextKey,
-    clearRetained
+    clearRetained,
+    loadedLayer?.sourceKey ?? null,
+    sourceKey
   ) ? loadedLayer : null;
   const candidateLoaded = visibleLayer?.token === token;
   const candidateComplete = active && progress.token === token && progress.keys.size === images.length;
@@ -63,9 +68,9 @@ export function RadarImageLayer({
 
   useEffect(() => {
     if (!candidateComplete || loadedLayer?.token === token) return;
-    setLoadedLayer({ contextKey, requestKey, token, images });
+    setLoadedLayer({ contextKey, sourceKey, requestKey, token, images });
     onLayerLoad();
-  }, [candidateComplete, contextKey, images, loadedLayer?.token, onLayerLoad, requestKey, token]);
+  }, [candidateComplete, contextKey, images, loadedLayer?.token, onLayerLoad, requestKey, sourceKey, token]);
 
   const recordLoad = (key: string): void => {
     setProgress((current) => {

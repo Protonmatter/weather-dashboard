@@ -94,6 +94,7 @@ export function ObservedRadarLayer({
       <RadarImageLayer
         active={active && viewportSettled && images.length > 0}
         contextKey={contextKey}
+        sourceKey={sourceKey}
         requestKey={requestKey}
         retryGeneration={retryGeneration}
         images={images}

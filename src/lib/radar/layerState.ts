@@ -38,7 +38,11 @@ export function matchesRadarLayerIdentity(
 export function shouldDisplayRetainedRadarLayer(
   loadedContextKey: string | null,
   currentContextKey: string,
-  clearRetained: boolean
+  clearRetained: boolean,
+  loadedSourceKey: string | null,
+  currentSourceKey: string
 ): boolean {
-  return !clearRetained && loadedContextKey === currentContextKey;
+  return !clearRetained &&
+    loadedContextKey === currentContextKey &&
+    loadedSourceKey === currentSourceKey;
 }

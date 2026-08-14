@@ -111,6 +111,9 @@ export default function PrecipitationTimelinePanel({
   const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
   const retainedForecastTimes = useRef<readonly string[]>([]);
   if (forecastGrid) retainedForecastTimes.current = forecastGrid.times;
+  const retainForecastAxis = forecastState.status === "loading" ||
+    forecastState.status === "refreshing" ||
+    forecastState.status === "ready";
 
   const {
     timeline,
@@ -126,7 +129,7 @@ export default function PrecipitationTimelinePanel({
   } = usePrecipitationTimeline({
     observations: source?.frames ?? [],
     observationProvider: provider,
-    forecastTimes: forecastGrid?.times ?? retainedForecastTimes.current,
+    forecastTimes: forecastGrid?.times ?? (retainForecastAxis ? retainedForecastTimes.current : []),
     now,
     reducedMotion,
   });
@@ -215,6 +218,7 @@ export default function PrecipitationTimelinePanel({
   const radarLoadUnavailable = !source && radarLoadFailed;
   const radarCoverageUnavailable = source?.coverage === "unavailable";
   const radarUnavailable = radarLoadUnavailable || radarCoverageUnavailable;
+  const forecastRefreshFailed = forecastGrid !== null && forecastState.status === "stale";
   const forecastUnavailable = !forecastGrid &&
     (forecastState.status === "error" || forecastState.status === "stale");
   const timelineUnavailable = timeline.frames.length === 0;
@@ -443,6 +447,14 @@ export default function PrecipitationTimelinePanel({
           {forecastUnavailable && (
             <span role="alert">
               Modeled forecast precipitation could not be loaded.{" "}
+              <button type="button" className={`${CONTROL} underline`} onClick={onRetryForecast}>
+                Retry forecast
+              </button>{" "}
+            </span>
+          )}
+          {forecastRefreshFailed && (
+            <span role="alert">
+              Modeled forecast precipitation could not be refreshed. Previously loaded forecast remains visible.{" "}
               <button type="button" className={`${CONTROL} underline`} onClick={onRetryForecast}>
                 Retry forecast
               </button>{" "}

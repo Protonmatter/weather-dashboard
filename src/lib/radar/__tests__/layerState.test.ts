@@ -50,7 +50,29 @@ describe("radar layer identity", () => {
   });
 
   it("drops a same-context retained layer when the provider catalogue is empty", () => {
-    expect(shouldDisplayRetainedRadarLayer("context-a", "context-a", false)).toBe(true);
-    expect(shouldDisplayRetainedRadarLayer("context-a", "context-a", true)).toBe(false);
+    expect(shouldDisplayRetainedRadarLayer(
+      "context-a",
+      "context-a",
+      false,
+      "source-a",
+      "source-a"
+    )).toBe(true);
+    expect(shouldDisplayRetainedRadarLayer(
+      "context-a",
+      "context-a",
+      true,
+      "source-a",
+      "source-a"
+    )).toBe(false);
+  });
+
+  it("drops a same-context retained layer from a previous source generation", () => {
+    expect(shouldDisplayRetainedRadarLayer(
+      "context-a",
+      "context-a",
+      false,
+      "source-a",
+      "source-b"
+    )).toBe(false);
   });
 });
