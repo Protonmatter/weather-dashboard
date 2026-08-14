@@ -1,8 +1,8 @@
 # Unified Precipitation Timeline Design
 
-**Status:** Approved design; awaiting written-spec review  
-**Date:** 2026-08-13  
-**Repository:** `Protonmatter/weather-dashboard`  
+**Status:** Implemented
+**Date:** 2026-08-13
+**Repository:** `Protonmatter/weather-dashboard`
 **Branch:** `feature/unified-precipitation-timeline`
 
 ## 1. Summary
@@ -521,7 +521,8 @@ The forecast grid is fetched once through the existing `useForecastMap` path. Th
 - Horizon expansion filters existing 48-hour forecast data and does not refetch.
 - Source refresh behavior remains within the existing cache, timeout, retry, circuit-breaker, and abort boundaries.
 - The radar implementation remains lazy until the user selects `Precipitation timeline`.
-- The JavaScript bundle must remain within the repository's enforced size ceilings.
+- The JavaScript bundle must remain within the repository's enforced ceilings: 73 kB initial
+  and the owner-approved 99 kB total, both measured gzipped.
 
 ## 15. Security and provenance
 

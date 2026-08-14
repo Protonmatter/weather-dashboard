@@ -24,7 +24,7 @@
 - Keep all playback and action controls at least 44 CSS pixels.
 - `prefers-reduced-motion` disables automatic playback while preserving slider, previous, and next controls.
 - Preserve forced-colors, keyboard, touch, and screen-reader semantics.
-- Initial JavaScript must remain at or below **73 kB gzip** and total JavaScript at or below **96 kB gzip**.
+- Initial JavaScript must remain at or below **73 kB gzip** and total JavaScript at or below the owner-approved **99 kB gzip** ceiling.
 - Implement Phase 1 with GFS modeled precipitation only; define but do not implement the later `hrrr-simulated-reflectivity` provider.
 - Do not merge or deploy until the complete PR CI matrix and all review threads are green.
 
@@ -1693,7 +1693,7 @@ npm run size
 npm run smoke
 ```
 
-Expected: every command exits `0`; size output remains at or below `73 kB` initial and `96 kB` total gzip.
+Expected: every command exits `0`; size output remains at or below `73 kB` initial and the owner-approved `99 kB` total gzip ceiling.
 
 - [ ] **Step 4: Run the complete visual suite**
 
@@ -1801,7 +1801,7 @@ Use a PR body containing:
 - unit/regression
 - dependency and licence
 - production build
-- 73/96 kB gzip budgets
+- 73/99 kB gzip budgets
 - production smoke
 - Liquid Glass visual regression
 - Chromium, WebKit, iPhone, and Android E2E

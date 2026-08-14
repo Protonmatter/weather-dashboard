@@ -4,6 +4,10 @@ import type { MapViewport } from "../lib/map/types";
 import { noaaImageLayers } from "../lib/radar/noaa";
 import { rainViewerTileUrl } from "../lib/radar/rainViewer";
 import type { RadarFrame, RadarSource } from "../lib/radar/types";
+import {
+  radarLayerContextKey,
+  type RadarLayerIdentity,
+} from "../lib/radar/layerState";
 import type { Place } from "../lib/types";
 import { RadarImageLayer, type RadarImageSpec } from "./RadarImageLayer";
 
@@ -16,8 +20,8 @@ export interface ObservedRadarLayerProps {
   frame: RadarFrame | null;
   viewport: MapViewport;
   retryGeneration: number;
-  onLayerLoad(validAt: Date): void;
-  onLayerError(message: string): void;
+  onLayerLoad(event: RadarLayerIdentity & { requestKey: string; validAt: Date }): void;
+  onLayerError(event: RadarLayerIdentity & { requestKey: string; message: string }): void;
 }
 
 function useSettledViewport(viewport: MapViewport): MapViewport {
@@ -43,16 +47,9 @@ export function ObservedRadarLayer({
   const settledViewport = useSettledViewport(viewport);
   const tiles = useMemo(() => visibleTiles(settledViewport), [settledViewport]);
   const provider = source?.provider ?? "unavailable";
-  const contextKey = [
-    provider,
-    place.lat,
-    place.lon,
-    settledViewport.center.lat,
-    settledViewport.center.lon,
-    settledViewport.zoom,
-    settledViewport.width,
-    settledViewport.height,
-  ].join(":");
+  const liveContextKey = radarLayerContextKey(place, viewport, provider);
+  const contextKey = radarLayerContextKey(place, settledViewport, provider);
+  const viewportSettled = liveContextKey === contextKey;
 
   const images = useMemo<RadarImageSpec[]>(() => {
     if (!frame || settledViewport.width <= 0 || settledViewport.height <= 0) return [];
@@ -81,25 +78,34 @@ export function ObservedRadarLayer({
     ? `${source.provider}:${source.fetchedAt}:${source.frames.at(-1)?.id ?? "empty"}`
     : "unavailable";
   const requestKey = `${sourceKey}:${frame?.id ?? "none"}:${images.map((image) => image.key).join("|")}`;
+  const identity: RadarLayerIdentity = {
+    contextKey,
+    sourceKey,
+    frameId: frame?.id ?? "none",
+  };
+  const clearRetained = source !== null && source.frames.length === 0;
 
   return (
     <div
-      hidden={!active}
+      hidden={!active || !viewportSettled}
       className="absolute inset-0 z-10 pointer-events-none"
       data-testid="precipitation-observation-overlay"
     >
       <RadarImageLayer
-        active={active && images.length > 0}
+        active={active && viewportSettled && images.length > 0}
         contextKey={contextKey}
         requestKey={requestKey}
         retryGeneration={retryGeneration}
         images={images}
+        clearRetained={clearRetained}
         onLayerLoad={() => {
-          if (frame) onLayerLoad(frame.validAt);
+          if (frame) onLayerLoad({ ...identity, requestKey, validAt: frame.validAt });
         }}
-        onLayerError={() => onLayerError(
-          "Radar imagery could not be loaded. The last successful layer remains visible when available."
-        )}
+        onLayerError={() => onLayerError({
+          ...identity,
+          requestKey,
+          message: "Radar imagery could not be loaded. The last successful layer remains visible when available.",
+        })}
       />
     </div>
   );

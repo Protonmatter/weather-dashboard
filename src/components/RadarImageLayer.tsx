@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { shouldDisplayRetainedRadarLayer } from "../lib/radar/layerState";
 
 export interface RadarImageSpec {
   key: string;
@@ -27,6 +28,7 @@ interface RadarImageLayerProps {
   requestKey: string;
   retryGeneration: number;
   images: RadarImageSpec[];
+  clearRetained: boolean;
   onLayerError: () => void;
   onLayerLoad: () => void;
 }
@@ -38,15 +40,26 @@ export function RadarImageLayer({
   requestKey,
   retryGeneration,
   images,
+  clearRetained,
   onLayerError,
   onLayerLoad,
 }: RadarImageLayerProps) {
   const [loadedLayer, setLoadedLayer] = useState<LoadedLayer | null>(null);
   const [progress, setProgress] = useState<LoadProgress>({ token: "", keys: new Set() });
   const token = `${contextKey}:${requestKey}:${retryGeneration}`;
-  const visibleLayer = loadedLayer?.contextKey === contextKey ? loadedLayer : null;
+  const visibleLayer = shouldDisplayRetainedRadarLayer(
+    loadedLayer?.contextKey ?? null,
+    contextKey,
+    clearRetained
+  ) ? loadedLayer : null;
   const candidateLoaded = visibleLayer?.token === token;
   const candidateComplete = active && progress.token === token && progress.keys.size === images.length;
+
+  useEffect(() => {
+    if (!clearRetained) return;
+    setLoadedLayer(null);
+    setProgress({ token: "", keys: new Set() });
+  }, [clearRetained]);
 
   useEffect(() => {
     if (!candidateComplete || loadedLayer?.token === token) return;

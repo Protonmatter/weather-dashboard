@@ -38,11 +38,6 @@ export interface UsePrecipitationTimelineResult {
 const selectionFor = (frame: PrecipitationFrame | null): PrecipitationSelection | null =>
   frame ? { id: frame.id, validAtMs: frame.validAt.getTime() } : null;
 
-const sameSelection = (
-  left: PrecipitationSelection | null,
-  right: PrecipitationSelection | null
-): boolean => left?.id === right?.id && left?.validAtMs === right?.validAtMs;
-
 export function usePrecipitationTimeline({
   observations,
   observationProvider,
@@ -72,8 +67,6 @@ export function usePrecipitationTimeline({
   );
 
   useEffect(() => {
-    const next = selectionFor(selectedFrame);
-    setSelection((current) => sameSelection(current, next) ? current : next);
     if (!selectedFrame) setPlayingState(false);
   }, [selectedFrame]);
 
