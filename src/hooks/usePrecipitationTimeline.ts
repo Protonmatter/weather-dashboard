@@ -90,8 +90,20 @@ export function usePrecipitationTimeline({
   }, [selectedFrame, timeline]);
 
   const setHorizonHours = useCallback((value: PrecipitationHorizonHours): void => {
+    if (value === horizonHours) return;
+    const nextTimeline = buildPrecipitationTimeline({
+      observations,
+      observationProvider,
+      forecastTimes,
+      now,
+      horizonHours: value,
+    });
+    setSelection((current) => {
+      if (!current || nextTimeline.frames.some((frame) => frame.id === current.id)) return current;
+      return selectionFor(reconcilePrecipitationSelection(nextTimeline, current));
+    });
     setHorizonState(value);
-  }, []);
+  }, [forecastTimes, horizonHours, now, observationProvider, observations]);
 
   const setPlaying = useCallback((value: boolean): void => {
     setPlayingState(value && !reducedMotion && timeline.frames.length > 1);

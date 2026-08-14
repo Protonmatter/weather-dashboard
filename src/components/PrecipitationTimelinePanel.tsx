@@ -109,12 +109,15 @@ export default function PrecipitationTimelinePanel({
   const [loadedObservation, setLoadedObservation] = useState<LoadedObservation | null>(null);
   const [imageFailure, setImageFailure] = useState<ObservationFailure | null>(null);
   const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
+  const retainedForecastTimes = useRef<readonly string[]>([]);
+  if (forecastGrid) retainedForecastTimes.current = forecastGrid.times;
 
   const {
     timeline,
     selectedFrame,
     horizonHours,
     playing,
+    selectFrame,
     selectTimestamp,
     step,
     setHorizonHours,
@@ -123,7 +126,7 @@ export default function PrecipitationTimelinePanel({
   } = usePrecipitationTimeline({
     observations: source?.frames ?? [],
     observationProvider: provider,
-    forecastTimes: forecastGrid?.times ?? [],
+    forecastTimes: forecastGrid?.times ?? retainedForecastTimes.current,
     now,
     reducedMotion,
   });
@@ -203,7 +206,15 @@ export default function PrecipitationTimelinePanel({
     if (!active) stop();
   }, [active, stop]);
 
-  const radarUnavailable = !source && (radarState.status === "error" || radarState.status === "stale");
+  useEffect(() => {
+    stop();
+  }, [imageContextKey, stop]);
+
+  const radarLoadFailed = radarState.status === "error" || radarState.status === "stale";
+  const radarRefreshFailed = source !== null && radarState.status === "stale";
+  const radarLoadUnavailable = !source && radarLoadFailed;
+  const radarCoverageUnavailable = source?.coverage === "unavailable";
+  const radarUnavailable = radarLoadUnavailable || radarCoverageUnavailable;
   const forecastUnavailable = !forecastGrid &&
     (forecastState.status === "error" || forecastState.status === "stale");
   const timelineUnavailable = timeline.frames.length === 0;
@@ -226,7 +237,7 @@ export default function PrecipitationTimelinePanel({
       data-testid="precipitation-overlay"
     >
       <ObservedRadarLayer
-        active={active && selectedObservation !== null}
+        active={active && mapVisible && pageVisible && selectedObservation !== null}
         place={place}
         source={source}
         frame={selectedObservation?.radarFrame ?? null}
@@ -355,6 +366,23 @@ export default function PrecipitationTimelinePanel({
             value={selectedValue}
             disabled={timelineUnavailable}
             onChange={(event) => selectTimestamp(Number(event.currentTarget.value))}
+            onKeyDown={(event) => {
+              let target: PrecipitationFrame | null = null;
+              let direction: -1 | 1 | null = null;
+              if (event.key === "ArrowLeft" || event.key === "ArrowDown") direction = -1;
+              if (event.key === "ArrowRight" || event.key === "ArrowUp") direction = 1;
+              if (event.key === "Home") target = timeline.frames[0] ?? null;
+              if (event.key === "End") target = timeline.frames.at(-1) ?? null;
+              if (direction === null && target === null) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (direction !== null) {
+                stop();
+                step(direction);
+              } else if (target) {
+                selectFrame(target);
+              }
+            }}
             className="min-h-11 w-full accent-white"
             aria-label="Precipitation valid time"
             aria-valuetext={displayedFrame
@@ -396,9 +424,17 @@ export default function PrecipitationTimelinePanel({
           {(radarState.status === "loading" || radarState.status === "refreshing") && !source && (
             <span role="status">Loading radar observations… </span>
           )}
-          {radarUnavailable && (
+          {radarLoadUnavailable && (
             <span role="alert">
               Radar observations could not be loaded.{" "}
+              <button type="button" className={`${CONTROL} underline`} onClick={retryRadar}>
+                Retry radar
+              </button>{" "}
+            </span>
+          )}
+          {radarRefreshFailed && (
+            <span role="alert">
+              Radar observations could not be refreshed. Previously loaded observations remain visible.{" "}
               <button type="button" className={`${CONTROL} underline`} onClick={retryRadar}>
                 Retry radar
               </button>{" "}
@@ -428,7 +464,7 @@ export default function PrecipitationTimelinePanel({
               </button>{" "}
             </span>
           )}
-          {!radarUnavailable && source?.coverage === "unavailable" && (
+          {radarCoverageUnavailable && (
             <span>No radar frames are currently available for this provider. </span>
           )}
           {selectedFrame?.kind === "observation" && !currentImageFailure && (
