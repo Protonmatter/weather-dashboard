@@ -58,6 +58,14 @@ export function frameAt(grid: MapForecastGrid, index: number): MapFrame {
   };
 }
 
+export function hasPrecipitationSamples(grid: MapForecastGrid, index: number): boolean {
+  if (!Number.isInteger(index) || index < 0 || index >= grid.times.length) return false;
+  return grid.points.some((point) => {
+    const sample = point.precipitationMm[index];
+    return sample !== null && sample !== undefined && Number.isFinite(sample);
+  });
+}
+
 export function bilinearSample(
   values: readonly (number | null)[],
   rows: number,

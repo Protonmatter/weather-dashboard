@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { bilinearSample, createGridSpec, frameAt, mapHeightForTarget } from "../grid";
+import {
+  bilinearSample,
+  createGridSpec,
+  frameAt,
+  hasPrecipitationSamples,
+  mapHeightForTarget,
+} from "../grid";
 import type { MapForecastGrid, MapViewport } from "../types";
 
 const viewport: MapViewport = {
@@ -78,5 +84,29 @@ describe("map frame and interpolation", () => {
     };
     expect(frameAt(grid, 99).time).toBe("b");
     expect(frameAt(grid, 99).temperatureC).toEqual([2]);
+  });
+
+  it("requires at least one usable precipitation sample for a forecast frame", () => {
+    const grid: MapForecastGrid = {
+      key: "precipitation-availability",
+      rows: 1,
+      cols: 2,
+      times: ["missing", "dry", "wet"],
+      fetchedAt: 0,
+      points: [0, 1].map((col) => ({
+        requested: { lat: 0, lon: col, row: 0, col },
+        resolved: { lat: 0, lon: col },
+        temperatureC: [1, 1, 1],
+        pressureHpa: [1000, 1000, 1000],
+        precipitationMm: [null, 0, col === 0 ? null : 2.5],
+        windKmh: [10, 10, 10],
+        windFromDeg: [0, 0, 0],
+      })),
+    };
+
+    expect(hasPrecipitationSamples(grid, 0)).toBe(false);
+    expect(hasPrecipitationSamples(grid, 1)).toBe(true);
+    expect(hasPrecipitationSamples(grid, 2)).toBe(true);
+    expect(hasPrecipitationSamples(grid, 3)).toBe(false);
   });
 });

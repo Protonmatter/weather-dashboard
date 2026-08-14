@@ -14,7 +14,6 @@ import {
 import { constrainViewport, geoToScreen, panViewport, visibleTiles, worldSize } from "../lib/map/mercator";
 import { tileProviderConfig } from "../lib/map/config";
 import type { MapLayer, MapProps, MapViewport } from "../lib/map/types";
-import { radarKey } from "../lib/radar/provider";
 
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 7;
@@ -22,6 +21,19 @@ const PLAYBACK_INTERVAL_MS = 1_600;
 const CONTROL = "glass-control glass-inset inline-flex items-center justify-center rounded-xl border border-white/20 bg-slate-950/55 text-white focus:outline-none focus:ring-2 focus:ring-white/80";
 const PrecipitationTimelinePanel = lazy(() => import("./PrecipitationTimelinePanel"));
 type MapMode = "forecast" | "precipitation";
+
+function precipitationSessionKey(place: MapProps["place"]): string {
+  return JSON.stringify([
+    place.lat,
+    place.lon,
+    place.name,
+    place.admin,
+    place.country,
+    place.cc,
+    place.postcode ?? null,
+    place.source ?? null,
+  ]);
+}
 
 function minimumZoomForWidth(width: number): number {
   let zoom = MIN_ZOOM;
@@ -703,7 +715,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
             </div>
           )}>
             <PrecipitationTimelinePanel
-              key={radarKey(place)}
+              key={precipitationSessionKey(place)}
               place={place}
               timezone={timezone}
               viewport={viewport}

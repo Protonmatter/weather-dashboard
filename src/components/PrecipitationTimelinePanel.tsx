@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useClock } from "./LocationClock";
 import { usePrecipitationTimeline } from "../hooks/usePrecipitationTimeline";
+import { hasPrecipitationSamples } from "../lib/map/grid";
 import type { MapLoadState } from "../lib/map/state";
 import type { MapForecastGrid, MapViewport } from "../lib/map/types";
 import {
@@ -109,8 +110,16 @@ export default function PrecipitationTimelinePanel({
   const [loadedObservation, setLoadedObservation] = useState<LoadedObservation | null>(null);
   const [imageFailure, setImageFailure] = useState<ObservationFailure | null>(null);
   const [imageRetryGeneration, setImageRetryGeneration] = useState(0);
-  const retainedForecastTimes = useRef<readonly string[]>([]);
-  if (forecastGrid) retainedForecastTimes.current = forecastGrid.times;
+  const forecastTimelineTimes = useMemo<readonly (string | null)[] | null>(
+    () => forecastGrid
+      ? forecastGrid.times.map((time, index) =>
+        hasPrecipitationSamples(forecastGrid, index) ? time : null
+      )
+      : null,
+    [forecastGrid]
+  );
+  const retainedForecastTimes = useRef<readonly (string | null)[]>([]);
+  if (forecastTimelineTimes) retainedForecastTimes.current = forecastTimelineTimes;
   const retainForecastAxis = forecastState.status === "loading" ||
     forecastState.status === "refreshing" ||
     forecastState.status === "ready";
@@ -129,7 +138,7 @@ export default function PrecipitationTimelinePanel({
   } = usePrecipitationTimeline({
     observations: source?.frames ?? [],
     observationProvider: provider,
-    forecastTimes: forecastGrid?.times ?? (retainForecastAxis ? retainedForecastTimes.current : []),
+    forecastTimes: forecastTimelineTimes ?? (retainForecastAxis ? retainedForecastTimes.current : []),
     now,
     reducedMotion,
   });
@@ -176,7 +185,8 @@ export default function PrecipitationTimelinePanel({
     selectedForecast &&
     forecastGrid &&
     selectedForecast.forecastIndex >= 0 &&
-    selectedForecast.forecastIndex < forecastGrid.times.length
+    selectedForecast.forecastIndex < forecastGrid.times.length &&
+    hasPrecipitationSamples(forecastGrid, selectedForecast.forecastIndex)
   );
   const selectedReady = selectedFrame?.kind === "observation" ? observationReady : forecastReady;
 
@@ -219,8 +229,10 @@ export default function PrecipitationTimelinePanel({
   const radarCoverageUnavailable = source?.coverage === "unavailable";
   const radarUnavailable = radarLoadUnavailable || radarCoverageUnavailable;
   const forecastRefreshFailed = forecastGrid !== null && forecastState.status === "stale";
-  const forecastUnavailable = !forecastGrid &&
-    (forecastState.status === "error" || forecastState.status === "stale");
+  const forecastHasSamples = forecastTimelineTimes?.some((time) => time !== null) ?? false;
+  const forecastCoverageUnavailable = forecastTimelineTimes !== null && !forecastHasSamples;
+  const forecastUnavailable = forecastCoverageUnavailable || (!forecastGrid &&
+    (forecastState.status === "error" || forecastState.status === "stale"));
   const timelineUnavailable = timeline.frames.length === 0;
   const canPlay = !reducedMotion && timeline.frames.length > 1 && !timelineUnavailable;
   const timelineMinimum = timeline.earliestAt?.getTime() ?? 0;
@@ -247,6 +259,9 @@ export default function PrecipitationTimelinePanel({
         frame={selectedObservation?.radarFrame ?? null}
         viewport={viewport}
         retryGeneration={imageRetryGeneration}
+        ariaLabel={(observationReady || retainedObservationFrame) && displayedFrame?.kind === "observation"
+          ? precipitationAriaValueText(displayedFrame, timezone)
+          : null}
         onLayerLoad={(event) => {
           if (!matchesRadarLayerIdentity(event, currentObservationIdentityRef.current)) return;
           setLoadedObservation({
@@ -404,7 +419,7 @@ export default function PrecipitationTimelinePanel({
               type="button"
               className={`${CONTROL} precipitation-horizon`}
               aria-pressed={horizonHours === hours}
-              disabled={forecastGrid === null}
+              disabled={!forecastHasSamples}
               onClick={() => setHorizonHours(hours)}
               data-testid={`precipitation-horizon-${hours}`}
             >
@@ -460,6 +475,9 @@ export default function PrecipitationTimelinePanel({
               </button>{" "}
             </span>
           )}
+          {forecastCoverageUnavailable && (
+            <span>No usable modeled precipitation samples are available. </span>
+          )}
           {currentImageFailure && (
             <span role="alert">
               {currentImageFailure}{" "}
@@ -480,7 +498,10 @@ export default function PrecipitationTimelinePanel({
             <span>No radar frames are currently available for this provider. </span>
           )}
           {selectedFrame?.kind === "observation" && !currentImageFailure && (
-            <span>Radar reflectivity shows precipitation intensity, not a surface total.</span>
+            <span>
+              Radar reflectivity shows precipitation intensity, not a surface total. A blank radar
+              layer can mean no precipitation or no radar coverage.
+            </span>
           )}
           {selectedFrame?.kind === "forecast" && (
             <span>GFS hour-ending modeled precipitation is not radar reflectivity.</span>

@@ -20,6 +20,7 @@ export interface ObservedRadarLayerProps {
   frame: RadarFrame | null;
   viewport: MapViewport;
   retryGeneration: number;
+  ariaLabel: string | null;
   onLayerLoad(event: RadarLayerIdentity & { requestKey: string; validAt: Date }): void;
   onLayerError(event: RadarLayerIdentity & { requestKey: string; message: string }): void;
 }
@@ -41,6 +42,7 @@ export function ObservedRadarLayer({
   frame,
   viewport,
   retryGeneration,
+  ariaLabel,
   onLayerLoad,
   onLayerError,
 }: ObservedRadarLayerProps) {
@@ -91,6 +93,7 @@ export function ObservedRadarLayer({
       className="absolute inset-0 z-10 pointer-events-none"
       data-testid="precipitation-observation-overlay"
     >
+      {ariaLabel && <span className="sr-only" role="img" aria-label={ariaLabel} />}
       <RadarImageLayer
         active={active && viewportSettled && images.length > 0}
         contextKey={contextKey}

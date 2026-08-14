@@ -317,6 +317,11 @@ test("switches every precipitation semantic when crossing NOW", async ({ page })
   await expect(page.getByTestId("precipitation-valid-time")).toContainText("Observed");
   await expect(page.getByTestId("precipitation-observation-overlay")).toBeVisible();
   await expect(page.getByTestId("precipitation-forecast-overlay")).toBeHidden();
+  await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.getByRole("img", { name: /Observed, NOAA \/ NWS MRMS,/ })).toBeVisible();
+  await expect(page.getByText(
+    "A blank radar layer can mean no precipitation or no radar coverage."
+  )).toBeVisible();
   await expect(page.getByTestId("precipitation-horizon-24"))
     .toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled();
@@ -407,6 +412,101 @@ test("commits the clamped selection when the future horizon contracts", async ({
   await page.getByTestId("precipitation-horizon-48").click();
   await expect(timeline).toHaveAttribute("max", maximum48!);
   await expect(timeline).toHaveValue(maximum24!);
+});
+
+test("commits the visible forecast selection before playback while radar is loading", async ({ page }) => {
+  await installPausedClock(page);
+  let releaseRadar!: () => void;
+  const radarGate = new Promise<void>((resolve) => {
+    releaseRadar = resolve;
+  });
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/query"),
+    async (route) => {
+      await radarGate;
+      await route.fulfill({
+        json: {
+          features: radarFrames.map((idp_validtime, index) => ({
+            attributes: { objectid: index + 1, idp_validtime },
+          })),
+        },
+      });
+    }
+  );
+
+  try {
+    await page.goto("/");
+    await revealForecastMap(page);
+    await page.clock.runFor(500);
+    await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+    await page.clock.runFor(500);
+    await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+    const selectedForecast = await page.getByTestId("precipitation-time").inputValue();
+
+    await page.getByRole("button", { name: "Play precipitation timeline" }).click();
+    await expect(page.getByRole("button", { name: "Pause precipitation timeline" })).toBeVisible();
+    releaseRadar();
+    await expect(page.getByText(/Loading radar observations/)).toHaveCount(0);
+
+    await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+    await expect(page.getByTestId("precipitation-time")).toHaveValue(selectedForecast);
+  } finally {
+    releaseRadar();
+  }
+});
+
+test("resets the precipitation session for nearby places in the same radar cache cell", async ({ page }) => {
+  await page.route("**/geocoding-api.open-meteo.com/**", (route) => {
+    const second = new URL(route.request().url()).searchParams.get("name")?.includes("Two");
+    return route.fulfill({
+      json: {
+        results: [second
+          ? { latitude: 37.44439, longitude: -122.14979, name: "Nearby Two", admin1: "California", country: "United States", country_code: "US" }
+          : { latitude: 37.44431, longitude: -122.14971, name: "Nearby One", admin1: "California", country: "United States", country_code: "US" }],
+      },
+    });
+  });
+
+  await page.goto("/");
+  const search = page.getByRole("combobox");
+  await search.fill("Nearby One");
+  await page.getByRole("option").first().click();
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+  await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled();
+  await page.getByTestId("precipitation-horizon-48").click();
+  const timeline = page.getByTestId("precipitation-time");
+  await timeline.fill((await timeline.getAttribute("max"))!);
+  await expect(page.getByTestId("precipitation-source")).toContainText("Open-Meteo GFS");
+
+  await search.fill("Nearby Two");
+  await page.getByRole("option").first().click();
+
+  await expect(page.getByTestId("precipitation-horizon-24")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("precipitation-source")).toContainText("NOAA / NWS MRMS");
+});
+
+test("excludes forecast frames whose precipitation samples are all missing", async ({ page }) => {
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      const fixture = mapFixture(new URL(route.request().url())) as Array<{
+        hourly: { precipitation: Array<number | null> };
+      }>;
+      for (const point of fixture) {
+        point.hourly.precipitation = point.hourly.precipitation.map(() => null);
+      }
+      return route.fulfill({ json: fixture });
+    }
+  );
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+
+  await expect(page.getByTestId("precipitation-source")).toContainText("NOAA / NWS MRMS");
+  await expect(page.getByTestId("precipitation-horizon-48")).toBeDisabled();
+  await expect(page.getByText("MODEL FORECAST UNAVAILABLE")).toBeVisible();
 });
 
 test("keeps model precipitation usable when radar observations fail", async ({ page }) => {
@@ -846,7 +946,7 @@ test("retains radar imagery and exposes retry when catalogue refresh fails", asy
 });
 
 test("defers radar imagery replacement while the map is offscreen", async ({ page }) => {
-  await page.clock.install();
+  await installPausedClock(page);
   let catalogueRequests = 0;
   let imageRequests = 0;
   await page.route(
@@ -876,6 +976,7 @@ test("defers radar imagery replacement while the map is offscreen", async ({ pag
     const bounds = element.getBoundingClientRect();
     return bounds.bottom <= 0 || bounds.top >= window.innerHeight;
   })).toBe(true);
+  await expect(page.getByTestId("precipitation-observation-overlay")).toBeHidden();
 
   await page.clock.runFor(120_500);
   await expect.poll(() => catalogueRequests, { timeout: 15_000 }).toBe(2);

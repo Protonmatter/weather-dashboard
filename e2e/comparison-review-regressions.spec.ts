@@ -268,6 +268,7 @@ test("comparison local clocks retain timezone context and continue updating", as
   await page.clock.install({
     time: new Date("2026-08-13T07:00:45.000Z"),
   });
+  await page.clock.pauseAt(new Date("2026-08-13T07:00:45.000Z"));
 
   const state: ProviderState = { failComparison: false };
   await stubProviders(page, state);

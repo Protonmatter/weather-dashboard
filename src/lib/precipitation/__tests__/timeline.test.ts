@@ -154,6 +154,23 @@ describe("unified precipitation timeline", () => {
       .toBe(refreshed.frames.at(-1)?.id);
   });
 
+  it("omits unavailable forecast frames without changing their source indexes", () => {
+    const timeline = buildPrecipitationTimeline({
+      observations: [],
+      observationProvider: "unavailable",
+      forecastTimes: [null, "2026-08-13T18:00", null, "2026-08-13T20:00"],
+      now,
+      horizonHours: 24,
+    });
+
+    expect(timeline.frames.map((frame) => (
+      frame.kind === "forecast" ? [frame.validAt.toISOString(), frame.forecastIndex] : null
+    ))).toEqual([
+      ["2026-08-13T18:00:00.000Z", 1],
+      ["2026-08-13T20:00:00.000Z", 3],
+    ]);
+  });
+
   it("returns null when reconciling or stepping an empty timeline", () => {
     const empty = buildPrecipitationTimeline({
       observations: [],

@@ -16,7 +16,7 @@ const HOUR_MS = 3_600_000;
 export interface BuildPrecipitationTimelineInput {
   observations: readonly RadarFrame[];
   observationProvider: RadarProviderId;
-  forecastTimes: readonly string[];
+  forecastTimes: readonly (string | null)[];
   now: Date;
   horizonHours: PrecipitationHorizonHours;
 }
@@ -37,21 +37,22 @@ export function parseGfsValidTime(raw: string): Date {
 }
 
 export function gfsFuturePrecipitationSource(
-  forecastTimes: readonly string[]
+  forecastTimes: readonly (string | null)[]
 ): FuturePrecipitationSource {
   const seen = new Set<number>();
-  const frames = forecastTimes.map((raw, sourceIndex) => {
+  const frames = forecastTimes.flatMap((raw, sourceIndex) => {
+    if (raw === null) return [];
     const validAt = parseGfsValidTime(raw);
     const timestamp = validAt.getTime();
     if (seen.has(timestamp)) {
       throw new Error("precipitation timeline: duplicate forecast timestamp");
     }
     seen.add(timestamp);
-    return {
+    return [{
       id: `gfs:${validAt.toISOString()}`,
       validAt,
       sourceIndex,
-    };
+    }];
   });
   return {
     provider: "open-meteo-gfs",
@@ -106,7 +107,7 @@ function observationFrames(
 }
 
 function forecastFrames(
-  forecastTimes: readonly string[],
+  forecastTimes: readonly (string | null)[],
   nowMs: number,
   horizonHours: PrecipitationHorizonHours
 ): ForecastPrecipitationFrame[] {

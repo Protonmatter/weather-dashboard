@@ -16,7 +16,7 @@ import type { RadarFrame, RadarProviderId } from "../lib/radar/types";
 export interface UsePrecipitationTimelineInput {
   observations: readonly RadarFrame[];
   observationProvider: RadarProviderId;
-  forecastTimes: readonly string[];
+  forecastTimes: readonly (string | null)[];
   now: Date;
   initialHorizon?: PrecipitationHorizonHours;
   reducedMotion: boolean;
@@ -106,8 +106,10 @@ export function usePrecipitationTimeline({
   }, [forecastTimes, horizonHours, now, observationProvider, observations]);
 
   const setPlaying = useCallback((value: boolean): void => {
-    setPlayingState(value && !reducedMotion && timeline.frames.length > 1);
-  }, [reducedMotion, timeline.frames.length]);
+    const shouldPlay = value && !reducedMotion && timeline.frames.length > 1 && selectedFrame !== null;
+    if (shouldPlay) setSelection(selectionFor(selectedFrame));
+    setPlayingState(shouldPlay);
+  }, [reducedMotion, selectedFrame, timeline.frames.length]);
 
   const stop = useCallback((): void => setPlayingState(false), []);
 
