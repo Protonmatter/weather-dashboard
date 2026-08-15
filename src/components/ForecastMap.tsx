@@ -22,19 +22,6 @@ const CONTROL = "glass-control glass-inset inline-flex items-center justify-cent
 const PrecipitationTimelinePanel = lazy(() => import("./PrecipitationTimelinePanel"));
 type MapMode = "forecast" | "precipitation";
 
-function precipitationSessionKey(place: MapProps["place"]): string {
-  return JSON.stringify([
-    place.lat,
-    place.lon,
-    place.name,
-    place.admin,
-    place.country,
-    place.cc,
-    place.postcode ?? null,
-    place.source ?? null,
-  ]);
-}
-
 function minimumZoomForWidth(width: number): number {
   let zoom = MIN_ZOOM;
   while (zoom < MAX_ZOOM && worldSize(zoom) < Math.max(0, width)) zoom += 1;
@@ -92,6 +79,7 @@ function legend(layer: MapLayer, unit: "F" | "C"): { stops: string; labels: stri
 }
 
 export default function ForecastMap({ place, timezone, target, unit, enabled }: MapProps) {
+  const placeSessionKey = JSON.stringify(place);
   const mapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -112,6 +100,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
     width: 0,
     height: targetHeight,
   }));
+  const viewportPlaceSessionKey = useRef(placeSessionKey);
   const [layer, setLayer] = useState<MapLayer>("pressure");
   const [wind, setWind] = useState(true);
   const [timeIndex, setTimeIndex] = useState(0);
@@ -176,13 +165,14 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   }, [targetHeight]);
 
   useEffect(() => {
+    viewportPlaceSessionKey.current = placeSessionKey;
     setViewport((current) => constrainViewport({
       ...current,
       center: { lat: place.lat, lon: place.lon },
       zoom: targetZoomRef.current,
     }));
     setTimeIndex(0);
-  }, [place.lat, place.lon]);
+  }, [placeSessionKey]);
 
   useEffect(() => {
     setViewport((current) => constrainViewport({
@@ -198,7 +188,9 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
     [target, viewport]
   );
   const { state, retry } = useForecastMap(spec, enabled);
-  const grid = state.data?.key === spec?.key ? state.data : null;
+  const grid = viewportPlaceSessionKey.current === placeSessionKey && state.data?.key === spec?.key
+    ? state.data
+    : null;
   const frame = useMemo(() => grid ? frameAt(grid, timeIndex) : null, [grid, timeIndex]);
 
   useEffect(() => {
@@ -702,7 +694,11 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
         />
       )}
       {precipitationRequested && (
-        <PrecipitationTimelineBoundary active={mode === "precipitation"} onReturnToForecast={returnToForecast}>
+        <PrecipitationTimelineBoundary
+          key={placeSessionKey}
+          active={mode === "precipitation"}
+          onReturnToForecast={returnToForecast}
+        >
           <Suspense fallback={(
             <div
               id="precipitation-map-mode-panel"
@@ -715,7 +711,6 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
             </div>
           )}>
             <PrecipitationTimelinePanel
-              key={precipitationSessionKey(place)}
               place={place}
               timezone={timezone}
               viewport={viewport}
@@ -724,6 +719,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
               reducedMotion={reducedMotion}
               mapVisible={mapVisible}
               pageVisible={pageVisible}
+              enabled={enabled}
               forecastState={state}
               forecastGrid={grid}
               onRetryForecast={retry}

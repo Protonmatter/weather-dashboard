@@ -36,6 +36,7 @@ export interface PrecipitationTimelinePanelProps {
   reducedMotion: boolean;
   mapVisible: boolean;
   pageVisible: boolean;
+  enabled: boolean;
   forecastState: MapLoadState<MapForecastGrid>;
   forecastGrid: MapForecastGrid | null;
   onRetryForecast(): void;
@@ -85,6 +86,7 @@ export default function PrecipitationTimelinePanel({
   reducedMotion,
   mapVisible,
   pageVisible,
+  enabled,
   forecastState,
   forecastGrid,
   onRetryForecast,
@@ -231,10 +233,11 @@ export default function PrecipitationTimelinePanel({
   const forecastRefreshFailed = forecastGrid !== null && forecastState.status === "stale";
   const forecastHasSamples = forecastTimelineTimes?.some((time) => time !== null) ?? false;
   const forecastCoverageUnavailable = forecastTimelineTimes !== null && !forecastHasSamples;
-  const forecastUnavailable = forecastCoverageUnavailable || (!forecastGrid &&
+  const forecastDisabled = !enabled && !forecastGrid;
+  const forecastUnavailable = forecastDisabled || forecastCoverageUnavailable || (!forecastGrid &&
     (forecastState.status === "error" || forecastState.status === "stale"));
   const timelineUnavailable = timeline.frames.length === 0;
-  const canPlay = !reducedMotion && timeline.frames.length > 1 && !timelineUnavailable;
+  const canPlay = !reducedMotion && timeline.frames.length > 1 && !currentImageFailure;
   const timelineMinimum = timeline.earliestAt?.getTime() ?? 0;
   const timelineMaximum = timeline.latestAt?.getTime() ?? 0;
   const selectedValue = selectedFrame?.validAt.getTime() ?? timelineMinimum;
@@ -319,14 +322,13 @@ export default function PrecipitationTimelinePanel({
             onClick={() => setPlaying(!playing)}
             disabled={!canPlay}
             aria-label={playing ? "Pause precipitation timeline" : "Play precipitation timeline"}
-            title={reducedMotion ? "Playback is off because reduced motion is enabled" : undefined}
             data-testid="precipitation-playback"
           >
             {playing ? "Pause" : "Play"}
           </button>
           <button
             type="button"
-            className={CONTROL}
+            className={`${CONTROL} min-w-11`}
             onClick={() => { stop(); step(-1); }}
             disabled={timelineUnavailable}
             aria-label="Previous precipitation frame"
@@ -335,7 +337,7 @@ export default function PrecipitationTimelinePanel({
           </button>
           <button
             type="button"
-            className={CONTROL}
+            className={`${CONTROL} min-w-11`}
             onClick={() => { stop(); step(1); }}
             disabled={timelineUnavailable}
             aria-label="Next precipitation frame"
@@ -375,7 +377,7 @@ export default function PrecipitationTimelinePanel({
               data-testid="precipitation-now"
               data-now-percent={timeline.nowPercent.toFixed(6)}
             >
-              NOW
+              <span className="precipitation-now-label">NOW</span>
             </span>
           )}
           <input
@@ -459,7 +461,7 @@ export default function PrecipitationTimelinePanel({
               </button>{" "}
             </span>
           )}
-          {forecastUnavailable && (
+          {forecastUnavailable && !forecastDisabled && (
             <span role="alert">
               Modeled forecast precipitation could not be loaded.{" "}
               <button type="button" className={`${CONTROL} underline`} onClick={onRetryForecast}>
