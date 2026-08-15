@@ -7,14 +7,18 @@
   position: absolute;
   top: 0;
   z-index: 2;
-  transform: translateX(-50%);
   border-left: 2px solid rgb(255 255 255 / 0.82);
-  padding-left: 0.25rem;
   font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1rem;
   white-space: nowrap;
+}
+
+.precipitation-now-label {
+  display: block;
+  transform: translateX(-50%);
+  padding-inline: 0.25rem;
 }
 
 .precipitation-now-marker::after {

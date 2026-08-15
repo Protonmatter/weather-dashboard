@@ -306,6 +306,36 @@ test("contains a failed lazy precipitation chunk within precipitation mode", asy
   await expect(page.getByRole("tab", { name: "Forecast fields" })).toBeFocused();
 });
 
+test("resets a failed precipitation boundary for a new place session", async ({ page }) => {
+  await page.route(
+    (url) => url.hostname === "api.open-meteo.com" && url.pathname.endsWith("/v1/gfs"),
+    (route) => {
+      const url = new URL(route.request().url());
+      const fixture = mapFixture(url) as Array<{ hourly: { time: string[] } }>;
+      const firstLongitude = Number((url.searchParams.get("longitude") ?? "0").split(",")[0]);
+      if (firstLongitude < 0) {
+        for (const point of fixture) {
+          point.hourly.time = [...point.hourly.time];
+          point.hourly.time[1] = point.hourly.time[0]!;
+        }
+      }
+      return route.fulfill({ json: fixture });
+    }
+  );
+
+  await page.goto("/");
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+  await expect(page.getByTestId("precipitation-panel-error")).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("combobox").fill("Tokyo");
+  await page.getByRole("option").first().click();
+
+  await expect(page.getByTestId("precipitation-panel-error")).toHaveCount(0);
+  await expect(page.getByTestId("precipitation-panel")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("precipitation-source")).toContainText("RainViewer");
+});
+
 test("switches every precipitation semantic when crossing NOW", async ({ page }) => {
   await page.goto("/");
   await revealForecastMap(page);
@@ -325,6 +355,14 @@ test("switches every precipitation semantic when crossing NOW", async ({ page })
   await expect(page.getByTestId("precipitation-horizon-24"))
     .toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled();
+
+  const nowDividerOffset = await page.getByTestId("precipitation-now").evaluate((marker) => {
+    const track = marker.offsetParent as HTMLElement;
+    const percent = Number((marker as HTMLElement).dataset.nowPercent);
+    const expected = track.getBoundingClientRect().left + track.getBoundingClientRect().width * percent / 100;
+    return marker.getBoundingClientRect().left - expected;
+  });
+  expect(Math.abs(nowDividerOffset)).toBeLessThanOrEqual(1);
 
   const maximum = await timeline.getAttribute("max");
   expect(maximum).not.toBeNull();
@@ -399,17 +437,17 @@ test("commits the clamped selection when the future horizon contracts", async ({
   await expect(page.getByTestId("precipitation-horizon-48")).toBeEnabled();
 
   const timeline = page.getByTestId("precipitation-time");
-  await page.getByTestId("precipitation-horizon-48").click();
+  await page.getByTestId("precipitation-horizon-48").press("Enter");
   const maximum48 = await timeline.getAttribute("max");
   await timeline.fill(maximum48!);
   await expect(timeline).toHaveValue(maximum48!);
 
-  await page.getByTestId("precipitation-horizon-24").click();
+  await page.getByTestId("precipitation-horizon-24").press("Enter");
   const maximum24 = await timeline.getAttribute("max");
   expect(Number(maximum24)).toBeLessThan(Number(maximum48));
   await expect(timeline).toHaveValue(maximum24!);
 
-  await page.getByTestId("precipitation-horizon-48").click();
+  await page.getByTestId("precipitation-horizon-48").press("Enter");
   await expect(timeline).toHaveAttribute("max", maximum48!);
   await expect(timeline).toHaveValue(maximum24!);
 });
@@ -1213,6 +1251,26 @@ test("settles empty radar coverage and failed forecast as precipitation unavaila
   await expect(page.getByRole("button", { name: "Retry forecast" })).toBeVisible();
 });
 
+test("settles a disabled sample forecast as precipitation unavailable", async ({ page }) => {
+  await page.unroute("**/api.open-meteo.com/**");
+  await page.route("**/api.open-meteo.com/**", (route) => route.abort());
+  await page.route(
+    (url) => url.hostname === "mapservices.weather.noaa.gov" && url.pathname.endsWith("/query"),
+    (route) => route.fulfill({ json: { features: [] } })
+  );
+
+  await page.goto("/");
+  await expect(page.getByText(/Sample forecast/)).toBeVisible({ timeout: 15_000 });
+  await revealForecastMap(page);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+
+  await expect(page.getByText("No radar frames are currently available for this provider."))
+    .toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("MODEL FORECAST UNAVAILABLE")).toBeVisible();
+  await expect(page.getByTestId("precipitation-source")).toHaveText("PRECIPITATION UNAVAILABLE");
+  await expect(page.getByRole("button", { name: "Retry forecast" })).toHaveCount(0);
+});
+
 test("settles a NOAA overlay once after a multi-event map drag", async ({ page }) => {
   let imageRequests = 0;
   page.on("request", (request) => {
@@ -1321,6 +1379,8 @@ test("settles RainViewer tiles until a multi-event map drag finishes", async ({ 
   await expect(page.getByTestId("precipitation-source")).toContainText("RainViewer", { timeout: 15_000 });
   await expect.poll(() => tileRequests).toBeGreaterThan(0);
   await expect.poll(() => page.locator('img[data-radar-layer="loaded"]').count()).toBeGreaterThan(0);
+  const currentTime = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(new Date(currentTime + 1_000));
   const loadedRequests = tileRequests;
 
   const viewport = page.getByTestId("forecast-map-viewport");
@@ -1372,11 +1432,13 @@ test("drops a geographically stale NOAA layer and retries a failed image replace
   const retry = page.getByRole("button", { name: "Retry radar imagery" });
   await expect.poll(() => replacementAttempts, { timeout: 15_000 }).toBe(1);
   await expect(retry).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Play precipitation timeline" })).toBeDisabled();
   await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(0);
-  await retry.click();
+  await retry.press("Enter");
   await expect(retry).toBeHidden({ timeout: 15_000 });
   await expect.poll(() => replacementAttempts).toBe(2);
   await expect(page.locator('img[data-radar-layer="loaded"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Play precipitation timeline" })).toBeEnabled();
 });
 
 test("retries NOAA radar failure without silently switching providers", async ({ page }) => {
@@ -1648,6 +1710,12 @@ test("map controls remain touch-sized without horizontal overflow", async ({ pag
   expect(attributionBox!.height).toBeGreaterThanOrEqual(44);
   const legendBox = await page.getByTestId("forecast-map-legend").boundingBox();
   expect(attributionBox!.y + attributionBox!.height).toBeLessThanOrEqual(legendBox!.y);
+  await page.getByRole("tab", { name: "Precipitation timeline" }).click();
+  for (const name of ["Previous precipitation frame", "Next precipitation frame"]) {
+    const frameButtonBox = await page.getByRole("button", { name }).boundingBox();
+    expect(frameButtonBox!.width).toBeGreaterThanOrEqual(44);
+    expect(frameButtonBox!.height).toBeGreaterThanOrEqual(44);
+  }
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth
   );

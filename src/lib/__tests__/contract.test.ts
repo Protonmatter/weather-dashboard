@@ -32,13 +32,19 @@ const PALO_ALTO: Place = {
 
 async function getJson<T = Record<string, unknown>>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-  expect(res.ok).toBe(true);
+  expect(
+    res.ok,
+    `${new URL(url).hostname} returned HTTP ${res.status} ${res.statusText}`
+  ).toBe(true);
   return (await res.json()) as T;
 }
 
 async function expectImage(url: string): Promise<void> {
   const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-  expect(response.ok).toBe(true);
+  expect(
+    response.ok,
+    `${new URL(url).hostname} returned HTTP ${response.status} ${response.statusText}`
+  ).toBe(true);
   expect(response.headers.get("content-type")).toMatch(/^image\/(png|webp)/);
   expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(100);
 }
