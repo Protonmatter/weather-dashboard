@@ -26,9 +26,9 @@ if (!BASELINES) throw new Error(`visual baselines are not calibrated for ${proce
 
 const TIMELINE_BASELINES = {
   linux: {
-    phone: { width: 0, height: 0, dHash: "0000000000000000" },
-    tablet: { width: 0, height: 0, dHash: "0000000000000000" },
-    cinema: { width: 0, height: 0, dHash: "0000000000000000" },
+    phone: { width: 366, height: 852, dHash: "90e2f2cebe04e0e8" },
+    tablet: { width: 1132, height: 789, dHash: "8190b4ecd8f25d8f" },
+    cinema: { width: 1680, height: 901, dHash: "83909292928c7d0b" },
   },
   win32: {
     phone: { width: 366, height: 819, dHash: "b0e6f2ce9e5c63fa" },
