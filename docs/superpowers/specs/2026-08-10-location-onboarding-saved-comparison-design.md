@@ -1,5 +1,18 @@
 # Location Onboarding, Saved Locations, and Comparison Design
 
+> **Current-build reconciliation, 2026-09-12.** This approved design is implemented;
+> its original decisions and budget history are retained below. See
+> [current build state](../../BUILD_STATE.md) and the [engineering handoff](../../HANDOFF.md)
+> for the current source, validation, and delivery status.
+
+PR 10 preserves explicit geolocation consent, the six-place local list, lazy comparison,
+and its two-request concurrency limit. It adds query-bound search results, busy-dialog focus
+containment, and session-only feedback when local-storage writes fail. A stale point forecast
+or failed refresh stays visible with its freshness status while the prior dashboard remains
+usable. References to selecting Radar below now mean selecting **Precipitation timeline**;
+the provider disclosure still applies. The enforced JavaScript ceilings are 73 KiB initial
+and 105 KiB total gzip; the 73/96 kB figures below are the original feature's recorded limits.
+
 | | |
 | --- | --- |
 | Status | Approved |

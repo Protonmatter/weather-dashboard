@@ -3,7 +3,21 @@
 **Status:** Implemented
 **Date:** 2026-08-13
 **Repository:** `Protonmatter/weather-dashboard`
-**Branch:** `feature/unified-precipitation-timeline`
+**Original feature branch:** `feature/unified-precipitation-timeline`
+
+> **Current-build reconciliation, 2026-09-12.** This implemented design remains the
+> timeline contract. The pre-implementation context and original 73/99 kB budget below are
+> retained as design history. See [current build state](../../BUILD_STATE.md) and the
+> [engineering handoff](../../HANDOFF.md) for current source, validation, and delivery status.
+
+PR 10 preserves the shared GFS grid and separate observed/model semantics. Replacement map
+work becomes pending before its 400 ms acquisition debounce, and late cancellation cannot
+clear newer loading/error state or cache a canceled success. Separate browser regressions
+exercise those boundaries through the transport, provider, hook, reducer, and UI. The point
+ensemble's 24 complete future hour-ending intervals are a separate accumulation contract;
+they do not redefine this timeline's `NOW`-relative 24/48-hour horizon. Current enforced
+JavaScript ceilings are 73 KiB initial and 105 KiB total gzip. HRRR simulated reflectivity
+remains unimplemented.
 
 ## 1. Summary
 
@@ -21,12 +35,12 @@ Phase 1 uses the existing Open-Meteo GFS forecast grid for future precipitation.
 
 ## 2. Context
 
-The current application has two separate map modes:
+Before this design was implemented, the application had two separate map modes:
 
 - `Forecast fields` renders the existing 48-hour GFS grid for pressure, temperature, precipitation, and wind.
 - `Radar observations` renders provider-native historical radar frames from NOAA/NWS MRMS for supported U.S. locations and RainViewer elsewhere.
 
-Relevant implementation boundaries:
+Implementation boundaries at that time:
 
 - `src/components/ForecastMap.tsx` owns the interactive map, forecast grid, forecast canvas, tabs, viewport, and forecast playback.
 - `src/components/RadarPanel.tsx` owns observation playback, observation metadata, source attribution, observation imagery, and its independent timeline.

@@ -8,5 +8,5 @@ export default defineConfig({
   // routing. The default absolute base 404'd every asset on the first real Pages deploy.
   base: "./",
   build: { outDir: "dist", sourcemap: false, manifest: true },
-  test: { environment: "node", include: ["src/**/*.test.ts"] },
+  test: { environment: "node", include: ["src/**/*.test.{ts,tsx}"] },
 } as never);

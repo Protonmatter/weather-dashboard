@@ -2,6 +2,8 @@ import type { RefObject } from "react";
 import { Columns2, Loader2, MapPin, Plus, X } from "lucide-react";
 import { flag } from "../lib/units";
 import type { Place } from "../lib/types";
+import { glassClass } from "../lib/presentation/glass";
+import { savedPlaceId } from "../lib/locations/store";
 
 interface Props {
   locations: readonly Place[];
@@ -16,7 +18,7 @@ interface Props {
   onCompare: () => void;
 }
 
-const actionClass = "glass-surface glass-surface--control glass-surface--interactive glass-control inline-flex items-center gap-1.5 rounded-full px-3 text-xs disabled:opacity-50";
+const actionClass = glassClass("control", { interactive: true, className: "glass-control inline-flex items-center gap-1.5 rounded-full px-3 text-xs disabled:opacity-50" });
 
 export function SavedLocationsBar({ locations, activeId, pendingId, canSaveCurrent, compare, compareButtonRef, onSelect, onSaveCurrent, onRemove, onCompare }: Props) {
   const canCompare = locations.length >= 2;
@@ -39,7 +41,7 @@ export function SavedLocationsBar({ locations, activeId, pendingId, canSaveCurre
       <div className="hscroll max-w-full overflow-x-auto pb-1" data-testid="saved-locations-strip" tabIndex={locations.length ? undefined : 0}>
         <ul className="flex min-w-max gap-2" aria-label="Saved location shortcuts">
           {locations.map((place) => {
-            const id = `${place.lat.toFixed(4)},${place.lon.toFixed(4)}`;
+            const id = savedPlaceId(place);
             const active = id === activeId;
             const pending = id === pendingId;
             return (

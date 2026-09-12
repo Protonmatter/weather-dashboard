@@ -26,10 +26,11 @@ export interface SpreadSkill {
   spread: number;
   /** RMSE of the ensemble mean against the observation. */
   rmse: number;
-  /** spread / rmse. 1 is reliable, below 1 is under-dispersed. */
-  ratio: number;
+  /** spread / rmse. Null if no samples or RMSE is zero. */
+  ratio: number | null;
   samples: number;
-  members: number;
+  /** Common member count; null when the sample contains differing counts. */
+  members: number | null;
 }
 
 /**
@@ -37,31 +38,33 @@ export interface SpreadSkill {
  *
  * For a reliable ensemble of n members the relationship is not spread = RMSE but
  *
- *     E[spread²] = (n+1)/n · E[error²]
+ *     E[error²] = (n+1)/n · E[sample variance]
  *
  * because the ensemble mean of a finite sample is itself a noisy estimate of the
  * distribution mean. Comparing raw spread against RMSE therefore makes every finite
- * ensemble look under-dispersed — a 31-member ensemble by about 1.6%, a 5-member one by
- * 10%. The correction is applied to the spread side so a ratio of 1 means reliable.
+ * ensemble look under-dispersed. Multiply each unbiased sample variance by (n+1)/n
+ * before averaging; member counts need not be identical across records.
  */
 export function spreadSkillRatio(pairs: readonly EnsemblePair[]): SpreadSkill {
   const usable = pairs.filter((p) => p.members.length > 1);
-  if (usable.length === 0) return { spread: 0, rmse: 0, ratio: 0, samples: 0, members: 0 };
+  if (usable.length === 0) return { spread: 0, rmse: 0, ratio: null, samples: 0, members: 0 };
 
   const n = usable[0]!.members.length;
-  const correction = (n + 1) / n;
 
   let varSum = 0;
   let sqErrSum = 0;
   for (const { members, observed } of usable) {
-    varSum += variance(members);
+    varSum += variance(members) * (members.length + 1) / members.length;
     sqErrSum += (mean(members) - observed) ** 2;
   }
 
-  const spread = Math.sqrt(varSum / usable.length / correction);
+  const spread = Math.sqrt(varSum / usable.length);
   const rmse = Math.sqrt(sqErrSum / usable.length);
 
-  return { spread, rmse, ratio: rmse === 0 ? 0 : spread / rmse, samples: usable.length, members: n };
+  return {
+    spread, rmse, ratio: rmse === 0 ? null : spread / rmse, samples: usable.length,
+    members: usable.every((p) => p.members.length === n) ? n : null,
+  };
 }
 
 /* --------------------------------------------------------- Hersbach CRPS split */
@@ -93,6 +96,24 @@ export function hersbachDecomposition(pairs: readonly EnsemblePair[]): HersbachD
   if (N === 0) return { reliability: 0, potential: 0, total: 0, samples: 0 };
 
   const n = usable[0]!.members.length;
+  // A separate decomposition per member count preserves each nominal CDF grid.
+  // Combine its scores by sample weight, rather than silently dropping other sizes.
+  if (usable.some((p) => p.members.length !== n)) {
+    const groups = new Map<number, EnsemblePair[]>();
+    for (const pair of usable) {
+      const group = groups.get(pair.members.length) ?? [];
+      group.push(pair);
+      groups.set(pair.members.length, group);
+    }
+    let reliability = 0;
+    let potential = 0;
+    for (const group of groups.values()) {
+      const split = hersbachDecomposition(group);
+      reliability += split.reliability * group.length / N;
+      potential += split.potential * group.length / N;
+    }
+    return { reliability, potential, total: reliability + potential, samples: N };
+  }
   const alpha = new Array<number>(n + 1).fill(0);
   const beta = new Array<number>(n + 1).fill(0);
   let outliersBelow = 0;
@@ -167,13 +188,13 @@ export function hersbachDecomposition(pairs: readonly EnsemblePair[]): HersbachD
 /**
  * Probability Integral Transform values for an ensemble forecast.
  *
- * Under calibration the PIT is uniform on [0,1]. Generalises the rank histogram to the
- * continuous case and handles the atom at zero that precipitation always has: within a
- * block of tied members the value is placed uniformly rather than at an edge, which is
- * the randomised-PIT treatment for discrete components.
+ * Randomized empirical-CDF PIT. Ties sample uniformly inside the CDF jump, using a
+ * fixed seed for reproducibility. Finite ensembles have discrete CDF steps even without
+ * ties; the scorecard uses ensemblePitHistogram for a finite-rank uniform reference.
  */
-export function pitValues(pairs: readonly EnsemblePair[]): number[] {
+export function pitValues(pairs: readonly EnsemblePair[], seed = 12345): number[] {
   const out: number[] = [];
+  const rnd = lcg(seed);
   for (const { members, observed } of pairs) {
     const n = members.length;
     if (n === 0) continue;
@@ -183,7 +204,7 @@ export function pitValues(pairs: readonly EnsemblePair[]): number[] {
       if (m < observed) below++;
       else if (m === observed) tied++;
     }
-    out.push((below + tied / 2) / n);
+    out.push((below + (tied ? tied * rnd() : 0)) / n);
   }
   return out;
 }
@@ -195,6 +216,33 @@ export function pitHistogram(values: readonly number[], bins = 10): number[] {
     hist[idx]! += 1;
   }
   return hist;
+}
+
+/**
+ * Deterministic histogram of the randomized finite-ensemble rank transform.
+ * Rank r corresponds to [r/(n+1), (r+1)/(n+1)]. For ties, integrate uniform mass
+ * across every admissible rank and each intersecting display bin. Under exchangeable
+ * members and verification, expected bin mass is uniform even for finite n or atoms.
+ * This integrates the randomization exactly instead of adding Monte Carlo noise.
+ */
+export function ensemblePitHistogram(pairs: readonly EnsemblePair[], bins = 10): number[] {
+  const histogram = new Array<number>(bins).fill(0);
+  for (const { members, observed } of pairs) {
+    if (!members.length) continue;
+    let below = 0;
+    let tied = 0;
+    for (const member of members) {
+      if (member < observed) below++;
+      else if (member === observed) tied++;
+    }
+    const lower = below / (members.length + 1);
+    const upper = (below + tied + 1) / (members.length + 1);
+    for (let i = 0; i < bins; i++) {
+      const overlap = Math.max(0, Math.min(upper, (i + 1) / bins) - Math.max(lower, i / bins));
+      histogram[i]! += overlap / (upper - lower);
+    }
+  }
+  return histogram;
 }
 
 /* ------------------------------------------------------- block bootstrap CIs */

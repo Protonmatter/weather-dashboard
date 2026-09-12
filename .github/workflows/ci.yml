@@ -77,6 +77,10 @@ jobs:
       - run: npm run build
       - name: Bundle size budget
         run: npm run size
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify delivery gate failure paths
+        run: npm run test:tooling
       - name: Smoke test the built artefact
         run: npm run smoke
       - uses: actions/upload-artifact@v4
@@ -121,7 +125,8 @@ jobs:
       - run: npm ci
       - name: Install browser
         run: npx playwright install --with-deps
-      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
       - name: Run ${{ matrix.project }} journeys
         run: npx playwright test --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
@@ -225,27 +230,20 @@ jobs:
     needs: [deploy]
     runs-on: ubuntu-latest
     steps:
-      - name: Verify the deployed site responds and mounts
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify the deployed dashboard mounts in a browser
+        env:
+          URL: ${{ needs.deploy.outputs.page_url || 'https://protonmatter.github.io/weather-dashboard/' }}
         run: |
-          URL="${{ needs.deploy.outputs.page_url || 'https://protonmatter.github.io/weather-dashboard/' }}"
-          echo "probing $URL"
           for i in 1 2 3 4 5; do
-            HTML=$(curl -fsS --max-time 20 "$URL" || true)
-            if echo "$HTML" | grep -q 'id="root"'; then
-              SRC=$(echo "$HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
-              case "$SRC" in
-                http*) ASSET="$SRC" ;;
-                /*) ASSET="$(echo "$URL" | sed -E 's#^(https?://[^/]+).*#\1#')$SRC" ;;
-                *) ASSET="${URL%/}/${SRC#./}" ;;
-              esac
-              if curl -fsS --max-time 20 -o /dev/null "$ASSET"; then
-                echo "post-deploy smoke: PASS"
-                exit 0
-              fi
-            fi
+            if npm run smoke -- --url "$URL"; then exit 0; fi
             sleep 10
           done
-          echo "post-deploy smoke: FAIL"
           exit 1
 
   post-deploy-cloudflare-smoke:
@@ -254,27 +252,18 @@ jobs:
     needs: [deploy-cloudflare]
     runs-on: ubuntu-latest
     steps:
-      - name: Verify the Cloudflare site responds and mounts
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: npm }
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify the Cloudflare dashboard mounts in a browser
         env:
           URL: ${{ needs.deploy-cloudflare.outputs.page_url }}
         run: |
-          set -euo pipefail
-          echo "probing $URL"
           for i in 1 2 3 4 5; do
-            HTML=$(curl -fsS --max-time 20 "$URL" || true)
-            if echo "$HTML" | grep -q 'id="root"'; then
-              SRC=$(echo "$HTML" | grep -o 'src="[^"]*\.js"' | head -1 | sed 's/^src="//;s/"$//')
-              case "$SRC" in
-                http*) ASSET="$SRC" ;;
-                /*) ASSET="$(echo "$URL" | sed -E 's#^(https?://[^/]+).*#\1#')$SRC" ;;
-                *) ASSET="${URL%/}/${SRC#./}" ;;
-              esac
-              if curl -fsS --max-time 20 -o /dev/null "$ASSET"; then
-                echo "Cloudflare post-deploy smoke: PASS"
-                exit 0
-              fi
-            fi
+            if npm run smoke -- --url "$URL"; then exit 0; fi
             sleep 10
           done
-          echo "Cloudflare post-deploy smoke: FAIL"
           exit 1

@@ -60,7 +60,7 @@ function TemperatureBand({
   const mark = active != null && active < n ? pts[active] : null;
 
   return (
-    <div style={{ minWidth: 700 }}>
+    <div>
       <svg
         viewBox={`0 0 ${n} ${H}`}
         preserveAspectRatio="none"
@@ -127,7 +127,7 @@ export function HourlyStrip({
   return (
     <Card className="mb-4 fadein">
       <div className="hscroll overflow-x-auto -mx-1 px-1">
-        <div style={{ minWidth: 700 }}>
+        <div style={{ minWidth: hours.length * 46 }}>
           <ul className="flex">
             {hours.map((hp, i) => {
               const c = decodeWMO(hp.code, hp.isDay);
@@ -146,9 +146,10 @@ export function HourlyStrip({
                     onPointerEnter={() => setPreview(i)}
                     onPointerLeave={() => setPreview(null)}
                     onFocus={() => setPreview(i)}
+                    onBlur={() => setPreview(null)}
                     onClick={() => setPinned(pinned === i ? null : i)}
                     onKeyDown={(e) => {
-                      if (e.key === "Escape") setPinned(null);
+                      if (e.key === "Escape") { setPinned(null); setPreview(null); }
                     }}
                   >
                     <span style={{ fontSize: 11, color: "rgba(255,255,255,0.66)", fontWeight: 600 }}>
@@ -311,7 +312,7 @@ export function TenDayForecast({
                     </p>
                   )}
                   <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
-                    UV {Math.round(d.uv)} ({uvLabel(d.uv)})
+                    UV {d.uv === null ? "Unavailable" : `${Math.round(d.uv)} (${uvLabel(d.uv)})`}
                     {d.sunrise && ` · Sunrise ${fmtClock(d.sunrise, timezone)}`}
                     {d.sunset && ` · Sunset ${fmtClock(d.sunset, timezone)}`}
                   </p>
@@ -325,7 +326,7 @@ export function TenDayForecast({
   );
 }
 
-export function AirQualityCard({ aqi, wet }: { aqi: number | null; wet: boolean }) {
+export function AirQualityCard({ aqi }: { aqi: number | null; wet: boolean }) {
   if (aqi === null) {
     return (
       <Card title="Air Quality" icon={Wind} className="fadein">
@@ -339,9 +340,7 @@ export function AirQualityCard({ aqi, wet }: { aqi: number | null; wet: boolean 
   const band = aqiBand(aqi);
   const note =
     aqi <= 50
-      ? wet
-        ? "Air quality is good. Rain is helping keep particle levels low."
-        : "Air quality is good across the area."
+      ? "Air quality is good across the area."
       : aqi <= 100
         ? "Acceptable for most people. Sensitive groups may notice symptoms."
         : "Limit prolonged time outdoors if you're sensitive to pollution.";
@@ -361,18 +360,26 @@ export function AirQualityCard({ aqi, wet }: { aqi: number | null; wet: boolean 
   );
 }
 
-export function UvCard({ uv }: { uv: number }) {
+export function UvCard({ uv }: { uv: number | null }) {
+  if (uv === null) return (
+    <Card title="UV Index" icon={Sun} className="fadein">
+      <p className="text-lg font-light">Unavailable</p>
+      <p className="mt-2 text-xs text-white/60">The forecast provider did not supply today’s UV maximum.</p>
+    </Card>
+  );
+  // EPA UV Index Scale: protection is recommended from UV 3.
+  // https://www.epa.gov/sunsafety/uv-index-scale-0
   const note =
     uv <= 2
-      ? "Low exposure today — no protection needed."
+      ? "Low risk for most people. Wear sunglasses; protect skin if you burn easily."
       : uv <= 5
-        ? "Cloud cover keeps UV exposure minimal — sunscreen still optional."
-        : "Use sunscreen and seek shade around midday.";
+        ? "Use sunscreen and protective clothing outdoors; seek shade around midday."
+        : "Use sunscreen and protective clothing; reduce midday sun exposure and seek shade.";
 
   return (
     <Card title="UV Index" icon={Sun} className="fadein">
       <div style={{ fontSize: 34, fontWeight: 300, lineHeight: 1 }}>{Math.round(uv)}</div>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>{uvLabel(uv)}</div>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>{uvLabel(uv)} · today's peak</div>
       <Scale
         stops="#3fd67c 0%, #f7d94c 30%, #f79a3e 55%, #ee5b5b 78%, #a25ddc 100%"
         pos={(Math.min(uv, 12) / 12) * 100}

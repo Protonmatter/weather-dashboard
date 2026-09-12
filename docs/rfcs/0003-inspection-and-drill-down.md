@@ -2,21 +2,25 @@
 
 | | |
 | --- | --- |
-| Status | Accepted |
+| Status | Implemented; time-axis and interaction contracts corrected 2026-09-12 |
 | Author | ProtonMatter |
 | Supersedes | — |
 | Related | RFC 0001 §5 (presentation targets), RFC 0002 (temperature track) |
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) records the current PR 10
+revision and validation. The specification below preserves the original interaction
+rationale; the current hourly strip and its ensemble band share one horizontal scroll scale.
+
 ## 1. Problem
 
-Every panel is a read-only summary. The hourly strip draws an uncertainty band but will
-not tell you the range at 6 PM; the ten-day list compresses each day to two numbers and an
-icon; the precipitation fan shows a shape whose values at any given hour are unreadable.
-The data to answer all of these is already on the client — the forecast fetch returns 240
-hours and the parser keeps 24 — so the gap is interaction, not data.
+Before this feature, every panel was a read-only summary. The hourly strip drew an
+uncertainty band but would not reveal the range at 6 PM; the ten-day list compressed each
+day to two numbers and an icon; the precipitation fan did not expose its hourly values.
+The forecast request already returned 240 hours while the parser retained only 24, so
+the missing pieces were data retention and interaction rather than another provider call.
 
-The app also has no interaction primitives to build on: no hover, focus, or tap-to-inspect
-behaviour exists anywhere except the search box.
+The app also lacked reusable hover, focus, or tap-to-inspect primitives outside the search
+box. The surfaces below are now implemented; RFC 0005 adds separate metric tooltips.
 
 ## 2. Design
 
@@ -46,10 +50,19 @@ place changes — an hour index is meaningless across locations.
 
 `fetchForecast` previously discarded 216 of the 240 fetched hours at parse time. The
 parser now keeps every hour from "now" onward and consumers slice what they need: the
-strip its 24, the hero its 12, day drill-down its calendar day. Recording is explicitly
-capped to the ensemble's 24-hour window at the call site — a 240-hour `validTimes` axis
-against 24-hour member rows would archive sixteen phantom zero-member records per real
-one.
+strip its 24, the hero its 12, day drill-down its calendar day. Recording uses the
+ensemble's explicit `validTimes`, the 24 hour-ending precipitation endpoints, rather than
+the first 24 positions in the point-forecast array. Archived temperature rows match those
+endpoints; the visible temperature band matches the strip's instantaneous axis separately.
+The displayed accumulation window begins at the next complete provider-hour boundary,
+preserving fractional UTC phases. A short or missing member row cannot manufacture extra
+zero-valued records: the provider and archive boundaries reject missing values.
+
+The offline illustrative fallback uses the same explicit hour-ending axis to choose its
+probabilities; it does not take the first 24 point rows and assign them to later endpoints.
+The point rows used for the visible strip and the accumulation rows therefore remain
+distinct even when the request arrives partway through an hour. Synthetic output is
+labelled and excluded from the corrected v2 verification archive.
 
 ## 3. Surfaces
 

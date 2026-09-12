@@ -8,10 +8,10 @@ import { ForecastOverview } from "./components/ForecastOverview";
 import { Card } from "./components/Card";
 import { ForecastMapBoundary } from "./components/ForecastMapBoundary";
 import { WeatherMetrics } from "./components/WeatherMetrics";
+import { WeatherFreshness } from "./components/WeatherFreshness";
 import { usePlaceSearch, useWeatherLoader } from "./hooks/useSearch";
 import { useViewport } from "./hooks/useViewport";
-import { recordForecast } from "./lib/verification/store";
-import { reconcile, scorecard, type Scorecard } from "./lib/verification/verify";
+import type { Scorecard } from "./lib/verification/verify";
 import { loadWeather } from "./lib/weather";
 import {
   DeviceLocationError,
@@ -42,9 +42,11 @@ const ComparisonView = lazy(() => import("./components/ComparisonView"));
 const VerificationPanel = lazy(async () => ({
   default: (await import("./components/VerificationPanel")).VerificationPanel,
 }));
+const loadVerification = () => import("./components/VerificationSession");
 
 const FONT =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif';
+const POINT_REFRESH_MS = 10 * 60_000;
 
 const DEFAULT_PLACE: Place = {
   lat: 37.4419,
@@ -156,7 +158,16 @@ export default function App() {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [score, setScore] = useState<Scorecard | null>(null);
+  const [verificationUnavailable, setVerificationUnavailable] = useState(false);
   const [locating, setLocating] = useState(false);
+  const locationController = useRef<AbortController | null>(null);
+  const selecting = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.inert = onboardingOpen;
+  }, [onboardingOpen]);
+  useEffect(() => () => locationController.current?.abort(), []);
 
   useEffect(() => {
     if (initialSavedState.warning) {
@@ -184,7 +195,7 @@ export default function App() {
     const stale = data.updatedAt < midnight;
     setRainTodayIn(stale ? 0 : data.rainTodayIn);
     const key = `${placeKey}:${+midnight}`;
-    if (stale && !weather.busy && staleRefreshKey.current !== key) {
+    if (stale && !weather.busy && !selecting.current && !document.hidden && staleRefreshKey.current !== key) {
       staleRefreshKey.current = key;
       void weather.load(data.place);
     }
@@ -197,7 +208,7 @@ export default function App() {
       const now = new Date();
       timer = setTimeout(() => {
         setRainTodayIn(0);
-        if (!weatherBusy.current) {
+        if (!weatherBusy.current && !selecting.current && !document.hidden) {
           staleRefreshKey.current = `${placeKey}:${+dateAtLocalTime(
             new Date(),
             timezone,
@@ -213,12 +224,41 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [data.place, data.timezone, placeKey, weather.load]);
 
+  useEffect(() => {
+    if (!data.live || onboardingOpen) return;
+    // Provider current.time can remain old after a successful response. Bound retry
+    // cadence by the local attempt, while continuing to display the actual data age.
+    let attemptedAt = Date.now();
+    const refreshIfStale = (): void => {
+      const now = Date.now();
+      const midnight = +dateAtLocalTime(new Date(now), data.timezone, 0, 0);
+      const midnightKey = `${placeKey}:${midnight}`;
+      const newDay = +data.updatedAt < midnight && staleRefreshKey.current !== midnightKey;
+      if (document.hidden || weatherBusy.current || selecting.current || locationController.current
+        || (!newDay && (now - +data.updatedAt < POINT_REFRESH_MS || now - attemptedAt < POINT_REFRESH_MS))) return;
+      if (newDay) { staleRefreshKey.current = midnightKey; setRainTodayIn(0); }
+      attemptedAt = now;
+      weatherBusy.current = true;
+      void weather.load(data.place);
+    };
+    const timer = window.setInterval(refreshIfStale, 60_000);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfStale);
+    };
+  }, [data.place, data.updatedAt, data.live, data.timezone, placeKey, onboardingOpen, weather.load]);
+
   const T = (fahrenheit: number): number =>
     Math.round(unit === "F" ? fahrenheit : f2c(fahrenheit));
 
   const pick = useCallback(
     async (place: Place) => {
+      locationController.current?.abort();
+      locationController.current = null;
+      setLocating(false);
       const sequence = ++selectionSequence.current;
+      selecting.current = true;
       setOpen(false);
       setQuery("");
       setNotice(null);
@@ -226,7 +266,7 @@ export default function App() {
       try {
         await weather.load(place);
       } finally {
-        if (sequence === selectionSequence.current) setPendingPlaceId(null);
+        if (sequence === selectionSequence.current) { selecting.current = false; setPendingPlaceId(null); }
       }
     },
     [weather]
@@ -238,6 +278,7 @@ export default function App() {
       setSavedLocations(next.locations);
       if (next.warning) setNotice(next.warning);
       if (next.locations.length < 2) setCompare(false);
+      return next;
     },
     [locationStorage]
   );
@@ -254,8 +295,8 @@ export default function App() {
       );
       return;
     }
-    persistSavedLocations(result.locations);
-    setNotice(`${data.place.name} saved in this browser.`);
+    const persisted = persistSavedLocations(result.locations);
+    setNotice(persisted.warning ?? `${data.place.name} saved in this browser.`);
   }, [data.place, persistSavedLocations, savedLocations]);
 
   const removeSaved = useCallback(
@@ -302,38 +343,41 @@ export default function App() {
 
     const ctrl = new AbortController();
     void (async () => {
-      recordForecast({
-        lat: bundle.place.lat,
-        lon: bundle.place.lon,
-        members: bundle.ensemble.memberSeries ?? [],
-        validTimes: bundle.hourly.slice(0, 24).map((hour) => hour.time),
-        live: true,
-        tempMembers: bundle.ensemble.tempMemberSeries,
-      });
       try {
-        await reconcile(ctrl.signal);
+        const session = await loadVerification();
+        if (ctrl.signal.aborted) return;
+        const next = await session.collectVerification(bundle, ctrl.signal);
+        if (!ctrl.signal.aborted) { setScore(next); setVerificationUnavailable(false); }
       } catch {
-        // Verification is a side channel; a failure here must not disturb the forecast.
+        if (!ctrl.signal.aborted) setVerificationUnavailable(true);
       }
-      if (!ctrl.signal.aborted) setScore(scorecard());
     })();
 
     return () => ctrl.abort();
   }, [weather.data]);
 
   useEffect(() => {
-    setScore(scorecard());
+    let active = true;
+    void loadVerification().then((session) => {
+      if (active) setScore(session.scorecard());
+    }).catch(() => { if (active) setVerificationUnavailable(true); });
+    return () => { active = false; };
   }, []);
 
   const locate = useCallback(async () => {
+    locationController.current?.abort();
+    const ctrl = new AbortController();
+    locationController.current = ctrl;
     setNotice(null);
     setLocating(true);
     try {
-      const place = await locateDevice();
+      const place = await locateDevice(ctrl.signal);
+      if (ctrl.signal.aborted || locationController.current !== ctrl) return;
+      locationController.current = null;
       if (onboardingOpen) finishOnboarding();
       await pick(place);
     } catch (error) {
-      if (isAbort(error)) return;
+      if (isAbort(error) || ctrl.signal.aborted) return;
       const failure = error instanceof DeviceLocationError ? error.kind : "unknown";
       if (onboardingOpen) {
         finishOnboarding();
@@ -341,7 +385,7 @@ export default function App() {
       }
       setNotice(LOCATION_MESSAGES[failure]);
     } finally {
-      setLocating(false);
+      if (locationController.current === ctrl) { locationController.current = null; setLocating(false); }
     }
   }, [finishOnboarding, onboardingOpen, pick, weather]);
 
@@ -358,7 +402,6 @@ export default function App() {
   );
   const cond = decodeWMO(current.code, current.isDay);
   const scene = deriveWeatherScene(current);
-  const message = notice ?? weather.error ?? search.error;
 
   return (
     <div
@@ -379,7 +422,7 @@ export default function App() {
         restoreFocusRef={searchInputRef}
       />
 
-      <div className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }}>
+      <div ref={contentRef} className={`relative mx-auto ${layout.pad}`} style={{ maxWidth: layout.max }}>
         <SearchBar
           inputRef={searchInputRef}
           query={query}
@@ -391,7 +434,7 @@ export default function App() {
           onPick={pick}
           onLocate={() => void locate()}
           locating={locating}
-          onRefresh={() => void weather.load(place)}
+          onRefresh={() => { setNotice(null); void weather.load(place); }}
           refreshing={weather.busy}
           unit={unit}
           onUnit={() => setUnit(unit === "F" ? "C" : "F")}
@@ -410,11 +453,13 @@ export default function App() {
           onCompare={() => setCompare((currentCompare) => !currentCompare)}
         />
 
-        {message && (
+        {notice && (
           <p className="mb-4 text-xs text-white/65" role="status">
-            {message}
+            {notice}
           </p>
         )}
+        {weather.error && <p className="mb-4 text-sm text-white" role="alert">{weather.error}</p>}
+        {search.error && <p className="mb-4 text-sm text-white" role="status">{search.error}</p>}
 
         {compare ? (
           <ComparisonBoundary
@@ -438,6 +483,7 @@ export default function App() {
           </ComparisonBoundary>
         ) : (
           <>
+            <WeatherFreshness updatedAt={data.updatedAt} live={data.live} refreshing={weather.busy} failed={Boolean(weather.error)} />
             <ForecastOverview
               target={target}
               place={place}
@@ -453,10 +499,11 @@ export default function App() {
 
             <WeatherMetrics
               current={current}
-              uv={daily[0]?.uv ?? 0}
+              uv={daily[0]?.uv ?? null}
               rainTodayIn={rainTodayIn}
               ensemble={ensemble}
               placeKey={placeKey}
+              timezone={data.timezone}
             />
 
             <DeferredForecastMap
@@ -478,6 +525,7 @@ export default function App() {
                 </Suspense>
               </div>
             )}
+            {verificationUnavailable && <p className="mt-4 text-xs" role="status">Verification is unavailable. Forecast data remains available.</p>}
 
             <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
               <span>

@@ -1,5 +1,10 @@
 # Liquid Glass Design System
 
+**Current build:** Reviewed against PR 10 on 2026-09-12. [Build state and evidence](../BUILD_STATE.md)
+identifies the application revision, regression coverage, and validation limits. The
+[README](../../README.md) contains captures of the actual application; the reference below
+records design intent and is not a screenshot of a deployed build.
+
 ## Purpose
 
 The Weather Dashboard uses an adaptive Liquid Glass presentation to place dense forecast data above a procedural weather scene without changing any provider, forecast, verification, radar, map, privacy, or storage semantics.
@@ -28,9 +33,11 @@ Do not add `filter`, `mix-blend-mode`, masks, reduced opacity, or `will-change` 
 
 - **Phone:** single-column decision order; the procedural skyline is omitted and blur is reduced.
 - **Tablet:** hero and hourly rows span two columns; forecast and metric cards form a two-column matrix.
-- **Cinema:** hero spans the upper-left two rows, hourly spans the upper-right, AQI and precipitation sit below it, and the 10-day forecast aligns with wind, UV, sunset, and trend cards.
+- **Cinema:** hero occupies the left column across the upper two rows, hourly spans the two columns to its right, AQI and precipitation sit below hourly, and the 10-day forecast aligns with wind, UV, sunset, and trend cards.
 
 The application uses `data-target="phone|tablet|cinema"`; it does not sniff user agents.
+Phone applies through 767 CSS px; cinema requires at least 1600 CSS px and a 16:10 or wider
+aspect ratio. Remaining viewports use the tablet target.
 
 ## Scene behavior
 
@@ -44,6 +51,17 @@ The application uses `data-target="phone|tablet|cinema"`; it does not sniff user
 - Unsupported `backdrop-filter`, reduced-transparency, increased-contrast, and forced-color modes receive explicit fallbacks.
 - Hover is never required; existing keyboard, tap, pin, focus restoration, and error-boundary behavior remains intact.
 
+The PR 10 interaction corrections keep the hourly cells and their ensemble band on the same
+horizontal scale, retain visible keyboard search selection, trap focus while onboarding is
+busy, and dismiss metric previews with Escape. Saved-place persistence failure is shown as
+session-only feedback, separately from forecast refresh failures. Missing UV or visibility
+renders as unavailable rather than producing advice from a fabricated zero.
+
+Map loading feedback begins when a replacement is scheduled, before its request debounce.
+A late canceled transport cannot clear the replacement's busy state or newer Retry control;
+a canceled success cannot replace the field or enter the grid cache. These state changes do
+not add visual motion or change the design tokens.
+
 ## Verification
 
 Run:
@@ -56,9 +74,16 @@ npm run size
 npm run smoke
 npm run visual
 npm run e2e
+npm run test:tooling
 ```
 
 The visual project fixes browser time, locale, timezone, motion preference, provider responses, and animation state. It verifies the rendered dimensions and a perceptual difference hash for phone, tablet, and cinema captures with a small Hamming-distance tolerance so harmless PNG encoding or subpixel rasterization drift does not invalidate the design baseline. A mismatch attaches the actual PNG and computed signature to the Playwright report.
+
+The visual checks include overview, full-page dashboard, and precipitation timeline states.
+Screenshot examples are presentation evidence, while interactive recovery and late transport
+behavior require the functional browser regressions. Current results and remaining limits
+are recorded in [build state](../BUILD_STATE.md); this checklist is not a claim that any
+particular deployment has completed it.
 
 ## Review checklist
 

@@ -4,6 +4,7 @@ import { parseRainViewer, rainViewerTileUrl } from "../radar/rainViewer";
 import type { MapViewport } from "../map/types";
 import { comparisonUrl, parseComparisonResponse } from "../comparison/provider";
 import type { Place } from "../types";
+import { parseForecastResponse, parseEnsembleResponse, type ForecastResponse } from "../providers/openMeteo";
 
 /**
  * Contract tests (RFC 0001 §4).
@@ -51,13 +52,13 @@ async function expectImage(url: string): Promise<void> {
 
 d("contract: Open-Meteo forecast", () => {
   it("returns the fields the parser reads", async () => {
-    const j = await getJson(
+    const j = await getJson<ForecastResponse>(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
         `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m,surface_pressure,precipitation,rain,showers,snowfall,cloud_cover` +
         `&hourly=temperature_2m,weather_code,precipitation_probability,is_day,visibility,precipitation` +
         `&minutely_15=rain,showers&past_minutely_15=104&forecast_minutely_15=1` +
         `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max` +
-        `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&timeformat=unixtime&forecast_days=10`
+        `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&timeformat=unixtime&forecast_days=10`
     );
 
     const current = j["current"] as Record<string, number>;
@@ -79,6 +80,9 @@ d("contract: Open-Meteo forecast", () => {
     expect(minutely["showers"]).toHaveLength(minutely["time"]!.length);
     expect(daily["time"]).toHaveLength(10);
     expect(daily["sunrise"]).toHaveLength(10);
+    const parsed = parseForecastResponse(j);
+    expect(parsed.hourly.length).toBeGreaterThanOrEqual(24);
+    expect(Number.isFinite(parsed.current.temp)).toBe(true);
   }, 30_000);
 });
 
@@ -109,7 +113,7 @@ d("contract: Open-Meteo ensemble", () => {
   it("still exposes multiple precipitation and temperature member series", async () => {
     const j = await getJson(
       `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${LAT}&longitude=${LON}` +
-        `&hourly=precipitation,temperature_2m&models=gfs025&forecast_days=1` +
+        `&hourly=precipitation,temperature_2m&models=gfs025&forecast_days=3` +
         `&precipitation_unit=inch&temperature_unit=fahrenheit&timeformat=unixtime&timezone=auto`
     );
     const hourly = j["hourly"] as Record<string, unknown>;
@@ -119,6 +123,10 @@ d("contract: Open-Meteo ensemble", () => {
     expect(temp.length).toBeGreaterThanOrEqual(10);
     expect(Array.isArray(hourly["time"])).toBe(true);
     expect(typeof (hourly["time"] as unknown[])[0]).toBe("number");
+    const parsed = parseEnsembleResponse({ hourly });
+    expect(parsed.validTimes).toHaveLength(24);
+    expect(parsed.precip.length).toBeGreaterThanOrEqual(10);
+    expect(+parsed.windowEnd - +parsed.windowStart).toBe(24 * 3_600_000);
   }, 40_000);
 });
 
@@ -211,12 +219,13 @@ d("contract: Open-Meteo past analysis", () => {
   it("returns elapsed hours for verification, with temperature in the unit we asked for", async () => {
     const j = await getJson(
       `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
-        `&hourly=precipitation,temperature_2m&past_days=7&forecast_days=1` +
-        `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`
+        `&hourly=precipitation,temperature_2m&past_days=14&forecast_days=1` +
+        `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto&timeformat=unixtime`
     );
     const hourly = j["hourly"] as Record<string, unknown[]>;
-    const times = hourly["time"] as string[];
-    const past = times.filter((t) => new Date(t).getTime() < Date.now());
+    const times = hourly["time"] as number[];
+    expect(times.every((t) => typeof t === "number" && Number.isFinite(t))).toBe(true);
+    const past = times.filter((t) => t * 1000 < Date.now());
     expect(past.length).toBeGreaterThan(100);
 
     // The unit trap (RFC 0002 §3.3): the endpoint echoes the unit it actually applied.

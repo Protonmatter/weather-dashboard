@@ -2,6 +2,7 @@ import { decodeWMO } from "../lib/wmo";
 import { LocationClock } from "./LocationClock";
 import { Card } from "./Card";
 import type { CurrentConditions, DayPoint, HourPoint, Place } from "../lib/types";
+import { fmtHour } from "../lib/units";
 
 interface Props {
   place: Place;
@@ -12,11 +13,14 @@ interface Props {
   timezone: string;
 }
 
-function summary(hourly: readonly HourPoint[], label: string): string {
-  const wet = hourly.slice(0, 12).filter((hour) => decodeWMO(hour.code).wet).length;
-  if (wet >= 8) return `${label} on and off this evening.`;
-  if (wet) return `${label} for a few hours, then clearing.`;
-  return `${label} through the evening.`;
+function summary(hourly: readonly HourPoint[], timezone: string): string {
+  const hours = hourly.slice(0, 12);
+  const last = hours.at(-1);
+  if (!last) return "Hourly outlook unavailable.";
+  const wet = hours.filter((hour) => decodeWMO(hour.code).wet);
+  const end = fmtHour(last.time, timezone);
+  if (!wet.length) return `No precipitation indicated in the displayed hourly outlook through ${end}.`;
+  return `Precipitation indicated in ${wet.length} of ${hours.length} forecast hours through ${end}; first at ${fmtHour(wet[0]!.time, timezone)}.`;
 }
 
 export function Hero({ place, current, today, hourly, T, timezone }: Props) {
@@ -51,7 +55,7 @@ export function Hero({ place, current, today, hourly, T, timezone }: Props) {
         Feels Like: {T(current.feels)}°{today && ` · H:${T(today.high)}° L:${T(today.low)}°`}
       </p>
       <p className="mt-1 max-w-md text-[13px] leading-snug text-white/60">
-        {summary(hourly, condition.label)}
+        {summary(hourly, timezone)}
       </p>
       <dl className="mt-auto grid grid-cols-3 gap-2 pt-5">
         {metrics.map(([label, value]) => (

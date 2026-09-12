@@ -7,14 +7,14 @@ const MAX_HASH_DISTANCE = 4;
 
 const PLATFORM_BASELINES = {
   linux: {
-    phone: { width: 366, height: 2509, dHash: "86805d9101098687" },
-    tablet: { width: 1132, height: 1705, dHash: "0737135971393935" },
-    cinema: { width: 1680, height: 1145, dHash: "2324b55724a46479" },
+    phone: { width: 366, height: 2581, dHash: "86845d8195098687" },
+    tablet: { width: 1132, height: 1775, dHash: "0727137871791935" },
+    cinema: { width: 1680, height: 1197, dHash: "2324b55724a46459" },
   },
   win32: {
-    phone: { width: 366, height: 2466, dHash: "86805d1101098687" },
-    tablet: { width: 1132, height: 1706, dHash: "0737135971393935" },
-    cinema: { width: 1680, height: 1146, dHash: "2324b55724a46479" },
+    phone: { width: 366, height: 2551, dHash: "86815d01a1088687" },
+    tablet: { width: 1132, height: 1758, dHash: "0727117879391935" },
+    cinema: { width: 1680, height: 1198, dHash: "2324b55725a46479" },
   },
 } as const;
 
@@ -26,14 +26,14 @@ if (!BASELINES) throw new Error(`visual baselines are not calibrated for ${proce
 
 const TIMELINE_BASELINES = {
   linux: {
-    phone: { width: 366, height: 852, dHash: "90e2f2cebe04e0e8" },
-    tablet: { width: 1132, height: 789, dHash: "8190b4ecd8f25d8f" },
-    cinema: { width: 1680, height: 901, dHash: "83909292928c7d0b" },
+    phone: { width: 366, height: 853, dHash: "90e2f2cebe14e2e8" },
+    tablet: { width: 1132, height: 789, dHash: "8190b4ecd8f25dbf" },
+    cinema: { width: 1680, height: 900, dHash: "83909292928c7d1b" },
   },
   win32: {
     phone: { width: 366, height: 819, dHash: "b0e6f2ce9e5c63fa" },
     tablet: { width: 1132, height: 788, dHash: "8190b4ecd8d25da7" },
-    cinema: { width: 1680, height: 900, dHash: "8390929292dc7d27" },
+    cinema: { width: 1680, height: 899, dHash: "8390929292dc7d27" },
   },
 } as const;
 const TIMELINE_PLATFORM_BASELINES = TIMELINE_BASELINES[process.platform as VisualPlatform];
@@ -246,7 +246,7 @@ async function bootVisualDashboard(page: Page): Promise<void> {
   await page.getByTestId("forecast-overview").waitFor();
 
   const providerNotice = page
-    .getByRole("status")
+    .getByRole("alert")
     .filter({ hasText: "Couldn't reach the forecast service" });
   await expect(providerNotice).toBeVisible({ timeout: 15_000 });
   await providerNotice.evaluate((node) => {

@@ -234,9 +234,11 @@ export function rankHistogram(pairs: readonly EnsemblePair[]): number[] {
       if (m < observed) below++;
       else if (m === observed) tied++;
     }
-    // Deterministic tie handling: place at the middle of the tied block.
-    const rank = Math.min(n, below + Math.floor(tied / 2));
-    bins[rank] = (bins[rank] ?? 0) + 1;
+    // Include the observation among the ties: tied+1 ranks are admissible.
+    // Fractional mass is the exact expectation of uniform random tie breaking.
+    for (let rank = below; rank <= below + tied; rank++) {
+      bins[rank]! += 1 / (tied + 1);
+    }
   }
 
   return bins;

@@ -2,33 +2,30 @@
 
 | | |
 | --- | --- |
-| Status | Accepted |
+| Status | Accepted; archive and scoring contracts corrected 2026-09-12 |
 | Author | ProtonMatter |
 | Supersedes | — |
 | Depends on | RFC 0001 §3 (advanced verification statistics) |
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the PR 10
+application corrections and subsequent regression coverage. `eb1ae83` adds persisted,
+bounded reconciliation rotation; its cursor is separate from the sealed v2 evidence.
+The earlier `8eb002f` late map transport tests do not change scoring conventions.
+
 ## 1. Problem
 
-The scorecard verifies one variable. Precipitation forecasts are archived, reconciled
-against reanalysis, and scored with Brier, Murphy, CRPS and a rank histogram — but
-temperature, the most-looked-at number in the app and now the subject of its own
-uncertainty band on the hourly strip, is never checked against what actually happened.
-
-The gap is not machinery. RFC 0001 §3 delivered Hersbach decomposition, spread–skill,
-PIT histograms and block-bootstrap intervals, all implemented and tested — and all, today,
-consumed by nothing in the application. §3.2 and §3.3 were written for a continuous
-variable; precipitation, with its atom at zero, exercises them least. Meanwhile the
-temperature ensemble members are fetched on every load and discarded one line before
-they would become useful: `ensembleFor` collapses them to display quantiles and drops
-the raw matrix.
-
-This RFC scores the temperature ensemble with the statistics already built for it.
+The original scorecard archived only precipitation. This RFC adds an independent
+temperature track using the live members already fetched for the hourly uncertainty band.
+The 2026-09-12 review corrections make the archive's time/provenance boundary explicit and
+separate fair CRPS from the empirical CRPS decomposed by Hersbach. Both tracks compare
+sealed forecasts with elapsed model-reference values; neither establishes agreement with
+independent station observations or empirical calibration of a forecast product.
 
 ## 2. Non-goals
 
-- A second observation source. Temperature observations come from the same Open-Meteo
-  `past_days` reanalysis the precipitation track uses, with the same caveat: analysis,
-  not a thermometer reading.
+- A second observation source. Temperature references come from the same Open-Meteo
+  forecast endpoint with `past_days` as precipitation. These are elapsed operational model
+  values, not thermometer readings or independent reanalysis verification.
 - Comparing against a rival forecast. Diebold–Mariano needs two forecasts of the same
   quantity; we hold one. Deferred until a second model is consumed.
 - Per-lead-time breakdown and °C display of scores (CRPS converts by ×5/9 — a difference
@@ -38,29 +35,62 @@ This RFC scores the temperature ensemble with the statistics already built for i
 
 ## 3. Design
 
-### 3.1 Archive schema: extend in place
+### 3.1 Archive schema: a corrected v2 sample series
 
-`ForecastRecord` gains two optional fields — `tMembers?: number[]` (member temperatures,
-°F, rounded to 0.1) and `tObserved?: number`. Same key, `wx.verification.v1`, no
-migration: the change is purely additive, so old records parse as valid new records and
-new records parse under old code. A versioned key would purchase a migration function and
-a dual-key window to gain nothing; a parallel temperature store would split the record
-cap, duplicate the module, and force a second observation fetch when one call returns
-both variables.
+`ForecastRecord` includes optional `tMembers?: number[]` (°F, rounded to 0.1) and
+`tObserved?: number`. Both variables share `wx.verification.v2`, its 4,000-record limit,
+and 30-day retention. Runtime checks reject invalid coordinates, instants, probabilities,
+member numbers, and reference values while retaining valid neighboring records.
 
-Rounding to 0.1 °F bounds the cost: two orders of magnitude below GFS ensemble spread,
-invisible to CRPS, and it keeps the worst case (~4000 records × ~700 B) under 3 MB
-against a typical 5 MB quota. `safeWrite` already degrades gracefully at quota:
-verification stops accumulating, the forecast is unaffected.
+The earlier `wx.verification.v1` is never read, rewritten, or deleted by this version,
+including when the v2 archive is cleared. Earlier timestamp and missing-value handling
+could contaminate those records, so v2 begins a new scoring series instead of migrating or
+silently reinterpreting them. This supersedes the original extend-in-place v1 decision.
+
+`issued` records this device's retrieval/sealing time, not model initialization. The v2
+writer also stores `source: "open-meteo-gfs025"` and `intervalStart`, with `valid` as the
+hour-ending precipitation endpoint and temperature's matching instant. Reconciliation
+retains `referenceSource: "open-meteo-forecast-past"`, `observedFetchedAt`, and/or
+`tObservedFetchedAt` from the original network response, separately for each variable.
+
+Rounding bounds each member's temperature quantization error to 0.05 °F; it is not
+mathematically invisible to scores. Retained v1 bytes also count against browser quota,
+so the v2 record limit is not a guaranteed storage-size bound. At quota or when storage is
+disabled, new verification data may not persist while forecasts remain usable.
+
+`wx.verification.cursor.v1` holds one last-scheduled location key. It is request-scheduling
+metadata, separate from `ForecastRecord` and its immutable member/provenance fields.
+Successful writes retain progress across reloads; write failure keeps progress in the
+current session only. `clearArchive()` resets the in-session cursor and independently
+attempts to remove both the v2 archive and persisted cursor. It never removes legacy v1.
 
 ### 3.2 Dedup: skip, not backfill
 
-Records are sealed at issue. If a valid hour is already archived (recorded before this
-feature, or when the model omitted temperature), later-arriving temperature members are
+Records are sealed when displayed. If a valid hour is already archived without temperature,
+later-arriving temperature members are
 **not** spliced in — a later fetch is a shorter-lead forecast, and mixing lead times
-inside one record would quietly bias the scores it feeds. The cost is that temperature
-sample counts lag precipitation for up to a day per location after upgrade. Sample counts
-are displayed per variable, so the lag explains itself.
+inside one record would quietly bias the scores it feeds. The two tracks therefore report
+their own sample counts.
+
+Reference backfill is different: missing precipitation and temperature remain independently
+pending, and either may fill on a later request. A null, omitted, or nonfinite value is
+not zero; a finite zero is valid. An already filled value is never overwritten. A location
+with only temperature references outstanding remains eligible for reconciliation without
+requiring new precipitation forecasts. Values retrieved at or before their valid time stay
+ineligible even if the response is served from cache after that time.
+
+Each reconciliation pass sorts the pending location keys and selects at most five distinct
+locations, beginning after the last scheduled key and wrapping at the end. The cursor
+advances before I/O, so missing, failed, or out-of-window references cannot repeatedly
+exclude later pending locations. An already-aborted caller does not advance it. The cap is
+per pass, and separate tabs can overlap work; the cursor is not a cross-tab lock.
+
+Reference acquisition continues to request `past_days=14`. It does not apply an exact
+fourteen-elapsed-day cutoff to archived records or returned references: a provider-local
+calendar window can include an eligible returned instant older than that duration. The
+actual response timestamps and retrieval provenance remain authoritative. A scheduling
+advance or nonzero reconciliation result does not prove archive persistence when storage
+writes fail.
 
 ### 3.3 The unit trap
 
@@ -71,6 +101,12 @@ plausibly-sized and wrong. Guarded three ways: a unit test asserts the request U
 contract suite asserts the `hourly_units.temperature_2m` echo from the live endpoint, and
 this section exists.
 
+The request also specifies `timeformat=unixtime`. Returned numeric seconds become absolute
+millisecond instants directly, with no timezone offset applied a second time. Timestamp
+format drift is rejected instead of guessing at timezone-free strings. Archived temperature
+uses the ensemble's explicit precipitation endpoint axis; the displayed temperature band
+separately matches the point strip's instantaneous axis, including `:30` and `:15` UTC phases.
+
 ### 3.4 Scores
 
 `Scorecard` gains `temp: TempScorecard | null` — null meaning "no temperature-verified
@@ -80,13 +116,20 @@ each answers a question the others cannot:
 | Metric | Question | Source |
 | --- | --- | --- |
 | Fair CRPS (°F) + block-bootstrap CI | How accurate, and is the number stable? | `meanCrps`, `crpsSeries` → `blockBootstrapCI` |
-| Hersbach reliability / potential | Miscalibrated, or calibrated but hard? | `hersbachDecomposition` |
-| Spread–skill ratio (Fortin-corrected) | Is the spread honest? | `spreadSkillRatio` |
-| PIT histogram | What shape is the calibration failure? | `pitValues` → `pitHistogram` |
+| Empirical CRPS + Hersbach reliability / potential | How do the two components reconstruct the empirical score? | `meanCrps(pairs, false)`, `hersbachDecomposition` |
+| Spread–skill ratio (Fortin-corrected) | How does corrected spread compare with mean-forecast RMSE? | `spreadSkillRatio` |
+| Rank PIT histogram | Where do references rank among finite members? | `ensemblePitHistogram` |
 
-PIT is preferred over a second rank histogram: the variable is continuous and a 10-bin
-PIT renders identically regardless of member count. Score series are sorted by valid time
-before bootstrapping — the moving-block bootstrap assumes serial order.
+The 10-bin rank PIT integrates fractional rank mass and ties and supports varying member
+counts. Its flat reference assumes exchangeability. Spread is corrected per record using
+`(n+1)/n` times sample member variance before averaging; zero RMSE makes the ratio undefined.
+Hersbach operates on empirical CRPS, separately within member-count groups before weighted
+aggregation. For `[60,64]` with reference `62`, fair CRPS is zero but empirical CRPS and the
+sum of Hersbach components are one.
+
+Score series are sorted by valid time before bootstrapping. The heuristic block length does
+not fully account for irregular visits, multiple locations, or reference/model dependence.
+Neither a small interval nor the 100-sample display threshold proves calibration.
 
 The synthetic fallback contributes nothing here by construction: it generates no
 temperature members, `recordForecast` refuses non-live input, and scoring filters on
@@ -95,18 +138,21 @@ member presence. A fabricated band is never scored because it is never made.
 ### 3.5 Presentation
 
 One card, two sections. The verification panel gains PRECIPITATION and TEMPERATURE
-section labels; the temperature block renders only when `temp` is non-null, so the
-fallback path and empty archives see the panel exactly as before. Content: a stat row
-(CRPS with its interval, spread/skill, samples), the PIT histogram sharing the bar
-chart already drawn for ranks, and the Hersbach pair in the existing definition-list
-style. The provisional threshold (100 samples) is shared with the precipitation track.
+section labels; temperature renders whenever `temp` is non-null, even when precipitation
+has zero scored records. Content: fair CRPS and its interval, corrected spread/skill (an em
+dash when undefined), samples, rank PIT, and separately labelled empirical CRPS with its
+Hersbach components. The provisional threshold (100 samples) is shared with precipitation;
+the panel states that the corrected series starts with new forecasts and legacy data is
+retained separately.
 
 ## 4. Follow-ups
 
 - Diebold–Mariano against a second model, once one is consumed (§2).
 - Per-lead-time CRPS breakdown, once records span multiple issue cadences.
+- Independent observation evidence and location-aware validation before calibration claims.
+- A resampling design that explicitly handles multiple locations and irregular visits.
 - °C display of temperature scores, threading the unit toggle into the panel.
-- Drop-oldest-and-retry on quota exhaustion, if the 3 MB estimate proves optimistic.
+- Visible persistence status and a bounded quota recovery policy that preserves legacy data.
 
 ## 5. References
 

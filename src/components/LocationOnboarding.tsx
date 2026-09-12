@@ -27,11 +27,12 @@ export function LocationOnboarding({ open, busy, onUseLocation, onNotNow, restor
       }
       if (event.key !== "Tab") return;
       const controls = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])];
-      if (!controls.length) return;
+      if (!controls.length) { event.preventDefault(); dialogRef.current?.focus(); return; }
       const first = controls[0]!;
       const last = controls.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      const outside = !dialogRef.current?.contains(document.activeElement) || document.activeElement === dialogRef.current;
+      if (event.shiftKey && (outside || document.activeElement === first)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (outside || document.activeElement === last)) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -40,10 +41,15 @@ export function LocationOnboarding({ open, busy, onUseLocation, onNotNow, restor
     };
   }, [open, restoreFocusRef]);
 
+  useEffect(() => {
+    if (open && busy) dialogRef.current?.focus();
+    else if (open) primaryRef.current?.focus();
+  }, [open, busy]);
+
   if (!open) return null;
   return (
     <div className="glass-scrim fixed inset-0 z-50 grid place-items-center px-4">
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="location-welcome-title" aria-describedby="location-welcome-description location-welcome-privacy" className="glass-surface glass-surface--overlay w-full max-w-md p-6" data-glass-level="overlay">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-busy={busy} aria-labelledby="location-welcome-title" aria-describedby="location-welcome-description location-welcome-privacy" className="glass-surface glass-surface--overlay w-full max-w-md p-6" data-glass-level="overlay">
         <span className="glass-inset mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl" aria-hidden="true"><LocateFixed size={22} /></span>
         <h2 id="location-welcome-title" className="text-xl font-semibold">Use your local weather</h2>
         <p id="location-welcome-description" className="mt-2 text-sm leading-6 text-white/75">Start with conditions and local time for your physical location.</p>

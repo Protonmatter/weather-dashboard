@@ -6,6 +6,7 @@ import {
   applyObservations,
   tempVerifiedRecords,
   locKey,
+  clearArchive,
   type ForecastRecord,
   type ObservedHour,
 } from "../store";
@@ -104,7 +105,7 @@ describe("recordForecast", () => {
     expect(added).toBe(1);
   });
 
-  it("leaves precipitation records byte-identical to the pre-temperature format", () => {
+  it("records sealing time and precipitation interval provenance without a model init claim", () => {
     recordForecast(input(), NOW);
     const r = loadArchive()[0];
     expect(r).toEqual({
@@ -114,7 +115,19 @@ describe("recordForecast", () => {
       p: 0.5,
       members: [0.1, 0],
       live: true,
+      source: "open-meteo-gfs025",
+      intervalStart: NOW,
     });
+  });
+
+  it("does not replace a missing member or temperature with zero", () => {
+    const added = recordForecast(input({
+      members: [[0.1, 0.2], [Number.NaN, 0.3]],
+      tempMembers: [[60, 61], [62]],
+    }), NOW);
+    expect(added).toBe(1);
+    expect(loadArchive()[0]?.members).toEqual([0.2, 0.3]);
+    expect(loadArchive()[0]?.tMembers).toBeUndefined();
   });
 });
 
@@ -177,6 +190,33 @@ describe("applyObservations", () => {
     saveArchive([sealed]);
     expect(applyObservations(new Map<string, ObservedHour>())).toBe(0);
   });
+
+  it("keeps each missing or nonfinite variable pending while filling the other", () => {
+    saveArchive([sealed]);
+    applyObservations(new Map([[key, { precip: Number.NaN, temp: 69 }]]));
+    expect(loadArchive()[0]?.observed).toBeUndefined();
+    expect(loadArchive()[0]?.tObserved).toBe(69);
+    applyObservations(new Map([[key, { precip: 0, temp: Number.POSITIVE_INFINITY }]]));
+    expect(loadArchive()[0]?.observed).toBe(0);
+    expect(loadArchive()[0]?.tObserved).toBe(69);
+  });
+
+  it("does not fill an unelapsed record", () => {
+    const future = { ...sealed, valid: NOW + HOUR };
+    saveArchive([future]);
+    expect(applyObservations(new Map([[`${future.loc}@${future.valid}`, { precip: 0.2 }]]))).toBe(0);
+    expect(loadArchive()[0]?.observed).toBeUndefined();
+  });
+
+  it.each([-1, 0])("rejects reference values fetched %i milliseconds before or at the valid time", offset => {
+    saveArchive([sealed]);
+    expect(applyObservations(new Map([[key, {
+      precip: 0.2, temp: 69, fetchedAt: sealed.valid + offset,
+      referenceSource: "open-meteo-forecast-past",
+    }]]))).toBe(0);
+    expect(loadArchive()[0]?.observed).toBeUndefined();
+    expect(loadArchive()[0]?.tObserved).toBeUndefined();
+  });
 });
 
 describe("tempVerifiedRecords", () => {
@@ -214,7 +254,7 @@ describe("tempVerifiedRecords", () => {
 });
 
 describe("loadArchive", () => {
-  it("round-trips a pre-temperature record unchanged — the no-migration claim as a test", () => {
+  it("round-trips a valid precipitation-only v2 record", () => {
     const v1: ForecastRecord = {
       loc: "40.71,-74.01",
       issued: NOW - HOUR,
@@ -229,5 +269,29 @@ describe("loadArchive", () => {
     expect(loaded).toEqual([v1]);
     saveArchive(loaded);
     expect(loadArchive()).toEqual([v1]);
+  });
+
+  it("starts a new archive while preserving the old bytes through writes and clearing", () => {
+    const storage = stubStorage();
+    const old = JSON.stringify([{ valid: NOW + HOUR, observed: 99 }]);
+    storage.set("wx.verification.v1", old);
+    expect(loadArchive()).toEqual([]);
+    recordForecast(input(), NOW);
+    expect(storage.get("wx.verification.v1")).toBe(old);
+    expect(JSON.parse(storage.get("wx.verification.v2") ?? "[]")).toHaveLength(2);
+    clearArchive();
+    expect(storage.get("wx.verification.v1")).toBe(old);
+    expect(storage.has("wx.verification.v2")).toBe(false);
+  });
+
+  it("rejects malformed stored numbers and keeps valid neighboring records", () => {
+    const storage = stubStorage();
+    recordForecast(input(), NOW);
+    const valid = loadArchive()[0]!;
+    storage.set("wx.verification.v2", JSON.stringify([
+      valid, null, { ...valid, p: 2 }, { ...valid, members: [null, 0] },
+      { ...valid, tObserved: "62" }, { ...valid, loc: "999,-122" },
+    ]));
+    expect(loadArchive()).toEqual([valid]);
   });
 });

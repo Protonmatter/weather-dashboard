@@ -2,20 +2,24 @@
 
 | | |
 | --- | --- |
-| Status | Accepted (partially implemented) |
+| Status | Accepted; scoring and delivery contracts corrected 2026-09-12 |
 | Author | ProtonMatter |
 | Supersedes | — |
-| Implementation | Phase 1 complete; Phases 2–4 tracked below |
+| Implementation | Phases 1–4 implemented; library utilities and displayed metrics distinguished below |
+
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the current
+application revision and its validation, including PR 10's verification reconciliation
+rotation and separate late-transport regression coverage. This RFC describes implementation
+contracts; it does not certify a deployment. Current contracts were reviewed on 2026-09-12.
 
 ## 1. Problem
 
-The dashboard renders probabilistic forecasts and scores its own calibration. Three gaps
-block it from being credible as reference-grade work:
+The dashboard renders probabilistic forecasts and accumulates local verification
+diagnostics. This RFC originally addressed three gaps:
 
-1. **Verification is shallow.** Brier, Murphy and CRPS establish calibration but say nothing
-   about *significance*. Two forecasts with different scores may not be distinguishably
-   different. Hourly forecast errors are strongly autocorrelated, so naive confidence
-   intervals are wrong by construction.
+1. **Verification needs context.** Brier, Murphy and CRPS summarize forecast/reference
+   pairs but do not establish calibration or significance by themselves. Different scores
+   may reflect sampling variability. Hourly dependence affects confidence intervals.
 2. **The pipeline verifies one dimension.** Unit tests and a typecheck do not catch a
    provider changing its response schema, a transitive dependency introducing a CVE, or a
    deploy that builds cleanly and renders a blank page.
@@ -27,7 +31,8 @@ block it from being credible as reference-grade work:
 - Running our own NWP model. Consuming and verifying open ensembles is the scope.
 - Server-side infrastructure. Client-only is a deliberate constraint; it bounds cost at zero
   and forces honesty about what can be claimed without a backend.
-- Real-time radar or satellite imagery. Both require licensed feeds.
+- Radar and satellite imagery were outside this RFC; later radar work is specified in
+  RFCs 0005–0006 and does not change the verification reference source.
 
 ## 3. Verification (Phase 2)
 
@@ -36,36 +41,53 @@ answers a question the current scorecard cannot.
 
 ### 3.1 Spread–skill ratio
 
-For a reliable ensemble the expected squared error of the ensemble mean and the ensemble
-variance are related by a finite-size correction:
+For conditionally independent, identically distributed members and a reference drawn from
+the same population, sample member variance `s²` (denominator `n−1`) and ensemble-mean
+squared error satisfy:
 
 ```
-E[spread²] = (n+1)/n · E[error²]
+E[error²] = (n+1)/n · E[s²]
+ratio = sqrt(mean((n_i+1)/n_i × s_i²)) / sqrt(mean(error_i²))
 ```
 
-Omitting the `(n+1)/n` factor makes every finite ensemble look under-dispersed. Following
-Fortin et al. (2014) the corrected ratio is reported; a value below 1 is genuine
-under-dispersion, not an artefact of member count.
+The multiplier corrects spread before comparing it with RMSE; applying it to the denominator
+would reverse the correction. It is calculated per record because retained member counts
+can differ. The ratio is undefined when RMSE is zero and is displayed as an em dash.
+One is the reference under these assumptions, not proof of calibration. A regression
+enumerates all eight combinations of two members and a reference drawn from `{−1,+1}`;
+the exact population ratio is one.
 
 ### 3.2 Hersbach CRPS decomposition
 
-CRPS = reliability + potential CRPS (Hersbach 2000). This separates "the ensemble is
-miscalibrated" from "the ensemble is calibrated but the signal is weak" — the continuous
-analogue of the Murphy split already implemented for the binary case. The identity is
-asserted in tests.
+Ordinary empirical CRPS = reliability + potential CRPS (Hersbach 2000). The temperature
+panel reports this score separately from fair CRPS: the member-pair denominators are `n²`
+and `n(n−1)`, respectively. For `[60,64]` and reference `62`, empirical CRPS is one and
+fair CRPS is zero. The Hersbach components sum to one, not zero. Member-count groups are
+decomposed separately, then combined with sample-count weights so every eligible pair
+contributes. These are sample diagnostics; the potential component is not an independently
+measured irreducible weather uncertainty.
 
 ### 3.3 PIT histogram
 
-The Probability Integral Transform generalises the rank histogram to the continuous case.
-Under calibration, PIT values are uniform on [0,1]. Reported alongside the rank histogram
-because PIT handles ties and mixed discrete-continuous distributions (precipitation has an
-atom at zero) more gracefully.
+The displayed temperature diagnostic is a finite-ensemble **rank PIT**, with a flat
+expectation under exchangeability. For `n` members and untied reference rank `r`, integrate
+uniform mass over `[r/(n+1), (r+1)/(n+1)]` into the display bins. If `k` members tie the
+reference and `b` lie below it, integrate over `[b/(n+1), (b+k+1)/(n+1)]`. This computes
+the exact fractional expectation of random rank/tie breaking without Monte Carlo jitter.
+It handles all-dry precipitation and differing member counts without a spurious edge spike.
+
+Precipitation retains raw `n+1` ranks when counts agree; ties divide their mass across
+`k+1` ranks. Mixed-count precipitation uses the same normalized rank PIT as temperature.
+The empirical-CDF `pitValues` library utility is separate: finite empirical CDF steps do
+not share this rank PIT's exact uniform finite-ensemble reference.
 
 ### 3.4 Moving-block bootstrap confidence intervals
 
-An i.i.d. bootstrap on hourly forecast scores is invalid: consecutive hours share weather
-regimes. A moving-block bootstrap with block length ≈ n^(1/3) preserves short-range
-dependence. Intervals are reported on every headline score.
+A moving-block bootstrap with block length approximately `n^(1/3)` retains some short-range
+dependence. The displayed interval is on temperature fair CRPS, using records ordered by
+valid time. This heuristic does not fully model irregular visits, multiple locations,
+reference error, or model-member dependence. The 100-sample provisional label is a display
+threshold, not a significance test or a calibration qualification.
 
 ### 3.5 Diebold–Mariano with HAC variance
 
@@ -74,11 +96,39 @@ an autocorrelation-robust variance estimate. Newey–West with Bartlett kernel a
 Diebold–Mariano statistic, plus the Harvey–Leybourne–Newbold small-sample correction, which
 matters at the sample sizes a personal archive reaches.
 
+This is a library utility. The current application does not archive a second model or
+display a significance comparison; the existence of this implementation establishes no
+empirical superiority claim.
+
 ### 3.6 Discrimination: ROC and AUC
 
 Reliability answers "are the probabilities honest". AUC answers "can the forecast separate
 events from non-events at all". A forecast can be perfectly reliable and useless; both are
 needed.
+
+ROC/AUC and the clipped ignorance score remain library utilities, not additional visible
+panels or independently validated skill results.
+
+### 3.7 Bounded reconciliation progress
+
+Each reconciliation pass selects at most five distinct pending locations in deterministic
+sorted order, continuing after the preceding pass's last location and wrapping when needed.
+The cursor advances before provider I/O. Missing or failed references therefore cannot keep
+the same first five locations at the head of every pass and starve later eligible records.
+An already-aborted caller makes no request and does not advance the cursor.
+
+Scheduling progress is stored in `wx.verification.cursor.v1`, separately from sealed forecast
+evidence in `wx.verification.v2`. The session continues rotating if cursor persistence fails;
+a reload resumes from the last successfully persisted cursor. Clearing the current archive
+also clears this scheduling key and its session value, while preserving the legacy v1 archive.
+This is per-session scheduling with best-effort persistence, not a lock across browser tabs.
+
+Rotation does not delete unfilled records or classify them as unfillable solely because they
+are older than fourteen elapsed days. Provider lookback uses local calendar days; any returned
+reference that satisfies the existing timestamp and finite-value checks remains usable.
+Precipitation and temperature can still be filled independently. See
+[RFC 0002](0002-temperature-verification.md) for archive and reference provenance contracts
+and [build state](../BUILD_STATE.md) for the regression evidence at each revision.
 
 ## 4. Delivery pipeline (Phase 3)
 
@@ -87,17 +137,31 @@ a pipeline where nobody knows what a red build implies.
 
 | Class | Answers | Trigger |
 | --- | --- | --- |
-| **Static** | Does it typecheck and lint? | every push |
-| **Unit** | Is the math right? | every push |
-| **Contract/validation** | Do provider responses still match our parsers? | every push + nightly |
-| **Regression** | Have previously fixed defects stayed fixed? | every push |
-| **Functional (E2E)** | Does a real browser complete real user journeys? | every push |
+| **Static** | Does it typecheck? | PRs, main pushes, nightly, manual runs |
+| **Unit** | Is the math right? | PRs, main pushes, nightly, manual runs |
+| **Contract/validation** | Do provider responses still match our parsers? | main + nightly |
+| **Regression** | Have previously fixed defects stayed fixed? | PRs, main pushes, nightly, manual runs |
+| **Tooling regression** | Do smoke and dependency gates reject invalid results? | PRs, main pushes, nightly, manual runs |
+| **Functional (E2E)** | Does a real browser complete real user journeys? | PRs, main pushes, nightly, manual runs |
 | **Smoke** | Does the built artefact boot and render? | post-build, post-deploy |
-| **Dependency** | Any known CVEs or licence drift? | every push + nightly |
-| **Budget** | Has the bundle or a Core Web Vital regressed? | every push |
+| **Dependency** | Any high/critical CVEs or licence drift? | PRs, main pushes, nightly, manual runs |
+| **Budget** | Does compressed JavaScript stay within the size ceilings? | PRs, main pushes, nightly, manual runs |
 
 Nightly runs matter for the contract class specifically: provider schemas change on their
 schedule, not ours, and we want to learn about it before a user does.
+
+The smoke gate runs Chromium and checks the production application's mount and runtime/module
+errors. Dependency audit or licence evidence that cannot be obtained or parsed fails the
+gate. CI's E2E job serves the exact uploaded `dist` artifact from the build job rather than
+rebuilding it. `npm run test:tooling` exercises these tooling failure paths. The review fixes
+retain the 73 KiB initial-JavaScript ceiling and revise the total ceiling from 99 to 105 KiB
+to accommodate correctness and failure-state handling without adding a dependency.
+
+The map regressions also exercise transport responses that settle after cancellation,
+separately from canceling a queued debounce timer. They preserve a newer request's loading
+and Retry state and reject obsolete successful responses before cache insertion. See
+[RFC 0004](0004-interactive-forecast-map.md#8-release-gates) for the contract and
+[build state](../BUILD_STATE.md) for the validation associated with a particular revision.
 
 ## 5. Presentation targets (Phase 4)
 
@@ -105,24 +169,24 @@ Three targets, one codebase:
 
 | Target | Viewport | Priorities |
 | --- | --- | --- |
-| Phone | 360–430 CSS px | Thumb reach, single column, no hover dependence, reduced motion honoured |
-| Tablet / laptop | 768–1440 | Two-column grid, current layout |
-| Desktop 16:9 | ≥1600, 16:9 | Full-bleed presentation, denser panels, richer motion |
+| Phone | ≤767 CSS px | Thumb reach, single column, no hover dependence, reduced motion honoured |
+| Tablet / laptop | All remaining viewports | Two-column grid |
+| Cinema | ≥1600 CSS px and aspect ratio ≥16:10 | Full-bleed presentation and denser panels |
 
-Mobile-first, progressively enhanced. Determined by `matchMedia` and container queries
-rather than user-agent sniffing.
+Mobile-first, progressively enhanced. `src/hooks/useViewport.ts` uses `matchMedia`, and
+the CSS uses matching media queries; neither relies on user-agent sniffing.
 
 ### 5.1 GPU acceleration — decision
 
-**WebGPU is not adopted at this time.** See ADR 0002. Current visuals are gradients,
-sub-100-element SVG, and ~46 CSS-animated elements — all comfortably within compositor
-budget. Adopting WebGPU now would add a capability-detection matrix and a fallback path to
-accelerate work the GPU already does through CSS compositing.
+**WebGPU is not adopted at this time.** See [ADR 0002](../adr/0002-no-webgpu-yet.md).
+Current visuals use CSS/SVG with at most 96 scene particles, plus Canvas 2D map fields and
+72/120/180 wind particles for phone/tablet/cinema. No current cross-device frame-time
+benchmark establishes a need for another rendering pipeline.
 
-The threshold that would justify it is specified so the decision is falsifiable: a particle
-advection field over the ensemble wind grid, ≥50k particles at 60fps. Below that, WebGL2
-suffices; below WebGL2's threshold, CSS suffices. A capability probe ships now so the
-decision can be revisited with data rather than re-litigated.
+The original investigation threshold remains a particle advection field at ≥50k particles
+and 60fps. This is a candidate workload for profiling, not a measured crossover point.
+`src/lib/gpu/capability.ts` provides an unused capability helper; the application does not
+invoke it or collect GPU telemetry.
 
 ## 6. Phasing
 
@@ -132,7 +196,7 @@ decision can be revisited with data rather than re-litigated.
 | 2 | Advanced verification statistics (§3) | Complete |
 | 3 | Full pipeline (§4) | Complete |
 | 4 | Responsive targets, capability probe (§5) | Complete |
-| 5 | Particle field, conditional on §5.1 threshold | Not started |
+| 5 | Large GPU particle field, conditional on §5.1 measurement | Not started; the bounded Canvas 2D map wind field is implemented separately in RFC 0004 |
 
 ## 7. References
 

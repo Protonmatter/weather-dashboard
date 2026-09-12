@@ -175,7 +175,6 @@ input::placeholder { color: rgba(255,255,255,0.5); }
 [data-target="phone"] button, [data-target="phone"] [role="option"] > button { min-height: 44px; }
 [data-target="phone"] .hscroll { scroll-snap-type: x proximity; }
 [data-target="phone"] .hscroll > ul > li { scroll-snap-align: start; }
-[data-target="cinema"] { --panel-radius: 28px; }
 [data-target="cinema"] section { padding: 1.25rem 1.4rem; }
 
 @media (min-resolution: 2dppx) { .rainstreak { width: 1px; } }

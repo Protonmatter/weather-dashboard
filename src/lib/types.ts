@@ -29,7 +29,8 @@ export interface DayPoint {
   low: number;
   high: number;
   code: number;
-  uv: number;
+  /** Daily peak UV index; null when the provider does not supply it. */
+  uv: number | null;
   sunrise: Date | null;
   sunset: Date | null;
 }
@@ -41,7 +42,8 @@ export interface CurrentConditions {
   isDay: boolean;
   humidity: number;
   wind: number;
-  visibility: number;
+  /** Horizontal visibility in miles; null when the provider does not supply it. */
+  visibility: number | null;
   pressure: number;
   /** Backward-looking provider interval total, inches. */
   precipitationIn: number;
@@ -80,9 +82,14 @@ export interface EnsembleSummary {
   source: string;
   /** False when members are synthetic. Never present synthetic data as real. */
   live: boolean;
+  /** Absolute hour-ending precipitation timestamps, one per member-series column. */
+  validTimes?: Date[];
+  /** Bounds of the complete 24-hour interval, starting on the next complete provider hour. */
+  windowStart?: Date;
+  windowEnd?: Date;
   /** Raw member-major series, retained only for verification archiving. */
   memberSeries?: number[][];
-  /** Raw member-major temperature series (°F), retained only for verification archiving. Live path only. */
+  /** Raw temperature series (°F) aligned to validTimes for archiving. Live path only. */
   tempMemberSeries?: number[][];
   /**
    * Per-hour temperature spread across ensemble members, aligned to the 24h hourly axis.

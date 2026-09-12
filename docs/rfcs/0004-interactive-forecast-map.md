@@ -2,10 +2,16 @@
 
 | | |
 | --- | --- |
-| Status | Accepted for implementation |
+| Status | Implemented; cancellation and recovery contracts reviewed 2026-09-12 |
 | Author | ProtonMatter |
 | Supersedes | — |
 | Related | RFC 0001 §2 and §5; RFC 0003 |
+
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the current
+application revision, separate late-transport coverage, and validation limits. The map
+contracts below were reviewed on 2026-09-12 and remain unchanged by the later verification
+reconciliation rotation. [RFC 0006](0006-unified-precipitation-timeline.md) extends the map with
+the unified precipitation timeline without duplicating its forecast request.
 
 ## 1. Problem
 
@@ -55,8 +61,16 @@ Grid sizes are bounded by presentation target:
 
 Responses are validated at the boundary. Missing values remain missing and render as
 gaps; they are never coerced to zero. A four-entry in-memory LRU bounds retained grid
-payloads. One request may be in flight, and a generation number prevents a late response
-from overwriting newer state.
+payloads with a ten-minute freshness window. An active stationary grid schedules
+revalidation when that window expires. The hook owns one current request generation;
+superseded transports receive cancellation, even if their promises settle later.
+
+A replacement becomes pending immediately, while acquisition alone waits for a
+400-millisecond debounce. The reducer rejects older generation actions, including late
+aborts, so they cannot clear a newer loading state or failure's Retry control. Successful
+transport responses also check cancellation and generation before inserting into the cache
+or updating state. This prevents an obsolete grid from reappearing on a later visit to its
+viewport even when the transport ignored cancellation.
 
 ## 4. Rendering
 
@@ -96,6 +110,12 @@ refresh may retain only data for the same normalized viewport and must label it 
 different viewport never displays the previous field as if it belonged there. Base-tile
 failure does not invalidate weather data; the canvas remains usable over a neutral field.
 
+Only the hook's caller signal identifies cancellation; an internal transport timeout
+becomes a failure/retry path. Requests use a 15-second timeout and one transient retry per
+configured base. The map circuit-breaker scope is separate from point forecasts. A
+successful HTTP response with an invalid schema fails closed instead of silently changing
+sources.
+
 The weather endpoint and tile template are build-time configuration, validated as HTTPS
 (with localhost permitted for development). User input cannot supply a URL. Provider
 errors shown in the UI omit request URLs and coordinates.
@@ -106,7 +126,8 @@ describe the providers' no-SLA and usage-policy limits.
 
 ## 7. Non-goals
 
-- Radar, satellite imagery, fronts, storm tracks, or severe-weather alerts.
+- Radar was outside this RFC and is implemented by RFCs 0005–0006. Satellite imagery,
+  fronts, storm tracks, and severe-weather alerts remain outside its scope.
 - A Cloudflare Worker in this change. The client has a base-URL seam, but direct
   Open-Meteo remains the default and degraded path.
 - Proxying or bulk-prefetching OpenStreetMap tiles.
@@ -116,11 +137,19 @@ describe the providers' no-SLA and usage-policy limits.
 
 ## 8. Release gates
 
-- Initial JavaScript ≤ 70 kB gzip and total JavaScript ≤ 90 kB gzip.
-- Exactly one map forecast request per settled viewport and none during playback or time
-  scrubbing.
+- Current initial JavaScript ≤ 73 KiB gzip and total JavaScript ≤ 105 KiB gzip, enforced
+  by `scripts/size-budget.mjs`. The original 70/90 KiB targets predate later features and
+  the PR 10 correctness fixes; see RFC 0001 and build state for the current evidence.
+- One acquisition for a settled viewport when its cache entry is absent or expired;
+  explicit Retry and freshness revalidation can acquire it again. Playback and time
+  scrubbing issue no forecast requests. Transport retries remain bounded as described above.
 - Projection, contour, extrema, parser, reducer, interaction, responsive, and failure-path
   tests pass.
 - Visible data and tile attribution, UTC labelling, and forecast-versus-observation wording
   are present.
-- Existing selected-place verification behaviour and archive counts are unchanged.
+- Map acquisition and playback do not add selected-place verification records or alter
+  their scoring. The PR 10 v2 archive corrections are specified separately in RFC 0002.
+- Separate browser cases cover late transport aborts during replacement debounce, during
+  replacement transport, and after a newer failure; another case rejects a canceled
+  success from both the displayed field and the cache. These tests control transport
+  settlement while exercising HTTP parsing, provider, hook, reducer, and UI behavior.

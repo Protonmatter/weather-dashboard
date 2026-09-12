@@ -7,7 +7,10 @@ import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
 const INITIAL_BUDGET_KB = 73;
-const TOTAL_BUDGET_KB = 99;
+// The main-review fixes add finite-data validation, archive isolation, corrected
+// statistics and recovery UI. Keep the startup ceiling; allow the measured ~4 KiB
+// total growth with a bounded margin, without introducing dependencies.
+const TOTAL_BUDGET_KB = 105;
 const dir = "dist/assets";
 
 const manifest = JSON.parse(readFileSync("dist/.vite/manifest.json", "utf8"));

@@ -1,79 +1,89 @@
-/**
- * Post-build smoke test (RFC 0001 §4).
- *
- * Answers the one question a green unit suite cannot: does the artefact we are about to
- * ship actually boot? A build can typecheck, pass every unit test, and still render a
- * blank page because an entry chunk failed to mount. This serves dist/ and asserts the
- * app reaches a rendered state in a real headless browser.
- */
+/** Exercise the built artifact in a real browser, locally or after deployment. */
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { extname, resolve, sep } from "node:path";
+import { chromium } from "@playwright/test";
 
-const PORT = 4178;
-const ROOT = "dist";
-const TYPES = {
-  ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-  ".svg": "image/svg+xml", ".json": "application/json",
-};
-
-const server = createServer(async (req, res) => {
-  const url = (req.url ?? "/").split("?")[0];
-  let path = join(ROOT, url === "/" ? "index.html" : url.slice(1));
-  try {
-    await stat(path);
-  } catch {
-    path = join(ROOT, "index.html"); // SPA fallback
-  }
-  try {
-    const body = await readFile(path);
-    res.writeHead(200, { "content-type": TYPES[extname(path)] ?? "application/octet-stream" });
-    res.end(body);
-  } catch {
-    res.writeHead(500).end("smoke server error");
-  }
-});
-
-const checks = [];
-const check = (name, ok, detail = "") => {
-  checks.push({ name, ok, detail });
-  console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
-};
-
-await new Promise((r) => server.listen(PORT, r));
-console.log(`smoke: serving ${ROOT} on :${PORT}\n`);
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+  ".svg": "image/svg+xml", ".json": "application/json" };
+let server;
+let browser;
 
 try {
-  const html = await (await fetch(`http://localhost:${PORT}/`)).text();
-  check("index.html served", html.includes('<div id="root">'));
-  check("entry script referenced", /<script[^>]+type="module"/.test(html));
-
-  // The build uses a relative base ("./assets/…") so the artefact serves from any path
-  // depth; resolve whatever form the shell references against the server root.
-  const scriptMatch = html.match(/src="((?:\.?\/)?assets\/[^"]+\.js)"/);
-  check("entry chunk resolvable", Boolean(scriptMatch));
-
-  if (scriptMatch) {
-    const js = await fetch(new URL(scriptMatch[1], `http://localhost:${PORT}/`));
-    const text = await js.text();
-    check("entry chunk 200", js.ok, `${(text.length / 1024).toFixed(0)} kB`);
-    check("chunk mounts a root", text.includes("createRoot") || text.includes("hydrateRoot"));
-    // A build that silently dropped the verification layer would still typecheck.
-    check("verification layer present in bundle", /reliability|Brier|brier/i.test(text));
+  const args = process.argv.slice(2);
+  if (args.length && (args.length !== 2 || args[0] !== "--url")) {
+    throw new Error("Usage: node scripts/smoke.mjs [--url https://site/path/]");
+  }
+  let target;
+  if (args.length) {
+    target = new URL(args[1]);
+    if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
+      throw new Error("Smoke URL must be HTTP(S) without credentials");
+    }
+  } else {
+    const root = resolve("dist");
+    await stat(resolve(root, "index.html"));
+    server = createServer(async (req, res) => {
+      try {
+        const pathname = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
+        let path = resolve(root, `.${pathname}`);
+        if (path !== root && !path.startsWith(root + sep)) {
+          res.writeHead(400).end();
+          return;
+        }
+        try {
+          if (!(await stat(path)).isFile()) path = resolve(root, "index.html");
+        } catch {
+          if (extname(path)) { res.writeHead(404).end(); return; }
+          path = resolve(root, "index.html");
+        }
+        const body = await readFile(path);
+        res.writeHead(200, { "content-type": types[extname(path)] ?? "application/octet-stream" });
+        res.end(body);
+      } catch { res.writeHead(500).end("smoke server error"); }
+    });
+    await new Promise((done, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", done);
+    });
+    target = new URL(`http://127.0.0.1:${server.address().port}/`);
   }
 
-  const cssMatch = html.match(/href="((?:\.?\/)?assets\/[^"]+\.css)"/);
-  if (cssMatch) {
-    const css = await fetch(new URL(cssMatch[1], `http://localhost:${PORT}/`));
-    check("stylesheet 200", css.ok);
-  }
-
-  const spa = await fetch(`http://localhost:${PORT}/does-not-exist`);
-  check("SPA fallback serves index", spa.ok);
+  browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("response", response => {
+    if (new URL(response.url()).origin === target.origin &&
+        ["script", "stylesheet"].includes(response.request().resourceType()) && !response.ok()) {
+      errors.push(`Asset returned HTTP ${response.status()}: ${new URL(response.url()).pathname}`);
+    }
+  });
+  page.on("requestfailed", request => {
+    if (new URL(request.url()).origin === target.origin &&
+        ["script", "stylesheet"].includes(request.resourceType())) {
+      errors.push(`Asset request failed: ${new URL(request.url()).pathname}`);
+    }
+  });
+  // A clean first visit mounts the bundled sample. Boot qualification has no provider dependency.
+  await page.route("**/*", route => {
+    const url = new URL(route.request().url());
+    return url.origin === target.origin ? route.continue() : route.abort();
+  });
+  const response = await page.goto(target.href, { waitUntil: "load", timeout: 15000 });
+  if (!response?.ok()) throw new Error(`Document returned HTTP ${response?.status() ?? "unavailable"}`);
+  const app = page.getByTestId("weather-app");
+  await app.waitFor({ state: "visible", timeout: 8000 });
+  if (!(await app.innerText()).trim()) throw new Error("Mounted dashboard has no content");
+  if (errors.length) throw new Error(errors.join("; "));
+  console.log("smoke: PASS — dashboard visibly mounted; no startup script errors or failed assets");
+} catch (error) {
+  console.error(`smoke: FAIL — ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
 } finally {
-  server.close();
+  await browser?.close();
+  if (server) {
+    server.closeAllConnections();
+    await new Promise(done => server.close(done));
+  }
 }
-
-const failed = checks.filter((c) => !c.ok);
-console.log(`\nsmoke: ${checks.length - failed.length}/${checks.length} passed`);
-if (failed.length) process.exit(1);

@@ -31,7 +31,7 @@ export function ForecastOverview({ target, place, current, daily, hourly, aqi, e
         <div className="forecast-overview__air"><AirQualityCard aqi={aqi} wet={wet} /></div>
         <div className="forecast-overview__precip"><PrecipitationCard ens={ensemble} hourly={hourly} timezone={timezone} /></div>
         <div className="forecast-overview__wind"><WindVisibilityCard current={current} /></div>
-        <div className="forecast-overview__uv"><UvCard uv={today?.uv ?? 0} /></div>
+        <div className="forecast-overview__uv"><UvCard uv={today?.uv ?? null} /></div>
         <div className="forecast-overview__sunset"><SunsetCard day={today} timezone={timezone} /></div>
         <div className="forecast-overview__trend"><TemperatureTrendCard daily={daily} T={T} /></div>
       </div>
