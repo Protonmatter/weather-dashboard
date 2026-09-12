@@ -4,6 +4,10 @@
 
 **Date:** 2026-08-13
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) records the PR 10
+corrections and validation through the separate `8eb002f` late-transport coverage.
+The original feature date is retained; current contracts were reviewed on 2026-09-12.
+
 ## 1. Decision
 
 The interactive map exposes one **Precipitation timeline** with two source-specific segments:
@@ -91,6 +95,13 @@ Failures remain source-local:
 - lazy timeline-chunk failure remains inside the precipitation tab and can restore focus to
   Forecast fields.
 
+The shared forecast hook marks a replacement pending before its 400-millisecond request
+debounce. Superseded transport aborts cannot clear the newer loading or error/Retry state;
+late canceled success responses are rejected before grid-cache insertion. The four
+independent browser regressions in `e2e/review-remediation.spec.ts` cover these boundaries,
+including revisiting the canceled viewport to prove that no obsolete cache entry survived.
+They do not make additional forecast requests for the precipitation timeline itself.
+
 ## 6. Privacy, performance, and scope
 
 The feature remains client-only, keyless, and free of telemetry or new persistence. Selecting
@@ -101,11 +112,12 @@ Radar imagery remains selected-frame-only; the client does not preload all histo
 The implementation adds no runtime dependency. The optional 48-hour horizon is an in-memory UI
 choice and does not change storage schemas.
 
-The initial JavaScript ceiling remains 73 kB gzip. The complete timeline increases total
-JavaScript from the prior 96 kB ceiling to 98.4 kB gzip, so the repository owner approved a
-bounded 99 kB total ceiling on 2026-08-14. The adjustment covers this feature's lazy timeline
-logic and retains less than 1 kB of total-bundle headroom; it does not relax the initial-load
-ceiling or authorize unrelated dependency growth.
+The timeline originally retained the 73 KiB initial JavaScript ceiling and increased total
+JavaScript from the prior 96 KiB ceiling to 98.4 KiB gzip. The repository owner approved a
+bounded 99 KiB total ceiling on 2026-08-14 for that feature. The subsequent PR 10 correctness
+and recovery fixes retain the 73 KiB initial ceiling and set the current total ceiling to
+105 KiB in `scripts/size-budget.mjs`. [Build state](../BUILD_STATE.md) records current
+measurements; this historical adjustment does not authorize unrelated dependency growth.
 
 Out of scope for this RFC are optical-flow nowcasting, HRRR or other forecast products,
 simulated reflectivity, source blending, backend caching, accounts, alerts, and persistent

@@ -1,8 +1,10 @@
 # Weather Dashboard engineering handoff
 
 The 2026-09-12 review remediation starts from `9e7ad980210e222ec13da3ec27d2c3d9fcb861e8`.
-This document records behavior and validation entry points, not a hosted deployment or
-calibration qualification. The README and RFCs 0001–0003/0005 describe the current contracts.
+This document records behavior, validation entry points, and the dated remediation history.
+[BUILD_STATE.md](BUILD_STATE.md) identifies the current application artifact and evidence;
+the README and RFCs describe the current contracts and distinguish historical proposals.
+Neither local screenshots nor historical test results establish hosted deployment or calibration.
 
 ## Data and time invariants
 
@@ -82,9 +84,12 @@ visual results, and deployment evidence must be recorded separately for the exac
 
 The working branch is `protonmatter/fix-main-review`, based on GitHub main
 `9e7ad980210e222ec13da3ec27d2c3d9fcb861e8`. The original local checkout is preserved.
-The implementation and local validation are complete. The user authorized committing,
-pushing this branch, and opening a PR against `main`. Git history and the PR record provide
-the publication status; merging and deployment are outside this handoff's authorization.
+The implementation and local validation are complete. [PR #10](https://github.com/Protonmatter/weather-dashboard/pull/10)
+contains the commits and review responses. The current instruction permits merging after
+the final commit's checks and review complete without blocking issues. Recheck the exact head,
+base, unresolved threads, and all applicable CI jobs before merging; do not infer readiness
+from an earlier commit's green run. A merge triggers the configured main-branch delivery
+workflow, whose deployment and post-deploy smoke results remain separate evidence.
 
 | Review issue | Implemented change | Regression evidence |
 | --- | --- | --- |
@@ -217,7 +222,7 @@ is `dist/assets/index-B05xrsZh.js`, SHA-256
 `e94654f3299452ea8b14d51484d78c7424a53e13e4f646f8ac34d4a5f6696e08`.
 The full hosted functional/visual suite passed on the preceding commit `521ffd9`; its results
 are separate from the targeted local validation of this change and the new commit's CI.
-The PR now changes 61 repository files relative to the reviewed main commit.
+At `0a8de45`, the PR changed 61 repository files relative to the reviewed main commit.
 
 ## Separate late transport settlement coverage
 
@@ -260,19 +265,54 @@ They do not exercise live provider cancellation behavior. The complete functiona
 visual matrix was not rerun locally for this test/documentation-only update; new hosted
 results are attached to its PR commit separately.
 
+## Documentation, screenshots, and hosted setup follow-up
+
+The documentation refresh reconciles all 18 existing Markdown files and adds
+[BUILD_STATE.md](BUILD_STATE.md) plus [screenshot provenance](screenshots/README.md).
+The README embeds three actual production-build browser captures: a live Palo Alto desktop
+overview, the GFS pressure map, and the responsive phone view. All image hashes and local
+links were checked; historical plans and test records remain explicitly dated.
+
+The hosted `8eb002f` run exposed a Linux WebKit setup race in the four new transport cases:
+the lazy map's viewport remained unmeasured while the helper polled for a request. Traces
+retained the zero-width state or showed measurement arriving too late for its 400 ms debounce.
+Commit `aa1f651` waits for the actual viewport, positive measured width, and loading state
+before the original request-count check. Existing cancellation, cache, request timing, and
+Retry assertions are unchanged; no timeout was increased. The 20-case Windows browser matrix
+and strict E2E typecheck passed afterward. Final hosted checks are recorded on the PR head.
+Application source, lockfile, and the screenshot build artifact are unchanged.
+
 ## Changed-file inventory
 
-The following repository files differ from the reviewed main commit. Generated builds,
-browser captures, runtime files and logs are excluded from source control.
+The current PR revision changes 77 repository paths relative to reviewed main
+`9e7ad980210e222ec13da3ec27d2c3d9fcb861e8`. The three intentional README PNG captures
+and their provenance are tracked documentation assets. Generated builds, test captures,
+runtime files, CLI snapshots, and validation logs remain excluded from source control.
 
 - [.github/workflows/ci.yml](../.github/workflows/ci.yml)
 - [.gitignore](../.gitignore)
-- [docs/HANDOFF.md](../docs/HANDOFF.md)
-- [docs/rfcs/0001-verification-and-delivery.md](../docs/rfcs/0001-verification-and-delivery.md)
-- [docs/rfcs/0002-temperature-verification.md](../docs/rfcs/0002-temperature-verification.md)
-- [docs/rfcs/0003-inspection-and-drill-down.md](../docs/rfcs/0003-inspection-and-drill-down.md)
-- [docs/rfcs/0005-local-context-and-radar.md](../docs/rfcs/0005-local-context-and-radar.md)
-- [docs/superpowers/plans/2026-09-12-main-review-remediation.md](../docs/superpowers/plans/2026-09-12-main-review-remediation.md)
+- [docs/adr/0002-no-webgpu-yet.md](adr/0002-no-webgpu-yet.md)
+- [docs/BUILD_STATE.md](BUILD_STATE.md)
+- [docs/design/liquid-glass.md](design/liquid-glass.md)
+- [docs/HANDOFF.md](HANDOFF.md)
+- [docs/rfcs/0001-verification-and-delivery.md](rfcs/0001-verification-and-delivery.md)
+- [docs/rfcs/0002-temperature-verification.md](rfcs/0002-temperature-verification.md)
+- [docs/rfcs/0003-inspection-and-drill-down.md](rfcs/0003-inspection-and-drill-down.md)
+- [docs/rfcs/0004-interactive-forecast-map.md](rfcs/0004-interactive-forecast-map.md)
+- [docs/rfcs/0005-local-context-and-radar.md](rfcs/0005-local-context-and-radar.md)
+- [docs/rfcs/0006-unified-precipitation-timeline.md](rfcs/0006-unified-precipitation-timeline.md)
+- [docs/screenshots/dashboard-desktop.png](screenshots/dashboard-desktop.png)
+- [docs/screenshots/dashboard-mobile.png](screenshots/dashboard-mobile.png)
+- [docs/screenshots/forecast-map.png](screenshots/forecast-map.png)
+- [docs/screenshots/README.md](screenshots/README.md)
+- [docs/superpowers/plans/2026-08-09-weather-context-radar.md](superpowers/plans/2026-08-09-weather-context-radar.md)
+- [docs/superpowers/plans/2026-08-10-location-onboarding-saved-comparison.md](superpowers/plans/2026-08-10-location-onboarding-saved-comparison.md)
+- [docs/superpowers/plans/2026-08-12-liquid-glass-frontend.md](superpowers/plans/2026-08-12-liquid-glass-frontend.md)
+- [docs/superpowers/plans/2026-08-13-unified-precipitation-timeline.md](superpowers/plans/2026-08-13-unified-precipitation-timeline.md)
+- [docs/superpowers/plans/2026-09-12-main-review-remediation.md](superpowers/plans/2026-09-12-main-review-remediation.md)
+- [docs/superpowers/specs/2026-08-09-weather-context-radar-design.md](superpowers/specs/2026-08-09-weather-context-radar-design.md)
+- [docs/superpowers/specs/2026-08-10-location-onboarding-saved-comparison-design.md](superpowers/specs/2026-08-10-location-onboarding-saved-comparison-design.md)
+- [docs/superpowers/specs/2026-08-13-unified-precipitation-timeline-design.md](superpowers/specs/2026-08-13-unified-precipitation-timeline-design.md)
 - [e2e/full-dashboard-liquid-glass.visual.spec.ts](../e2e/full-dashboard-liquid-glass.visual.spec.ts)
 - [e2e/journeys.spec.ts](../e2e/journeys.spec.ts)
 - [e2e/liquid-glass.visual.spec.ts](../e2e/liquid-glass.visual.spec.ts)
@@ -301,8 +341,8 @@ browser captures, runtime files and logs are excluded from source control.
 - [src/components/VerificationSession.ts](../src/components/VerificationSession.ts)
 - [src/components/WeatherFreshness.tsx](../src/components/WeatherFreshness.tsx)
 - [src/components/WeatherMetrics.tsx](../src/components/WeatherMetrics.tsx)
-- [src/hooks/useSearch.ts](../src/hooks/useSearch.ts)
 - [src/hooks/useForecastMap.ts](../src/hooks/useForecastMap.ts)
+- [src/hooks/useSearch.ts](../src/hooks/useSearch.ts)
 - [src/index.css](../src/index.css)
 - [src/lib/__tests__/contract.test.ts](../src/lib/__tests__/contract.test.ts)
 - [src/lib/__tests__/ensemble.test.ts](../src/lib/__tests__/ensemble.test.ts)

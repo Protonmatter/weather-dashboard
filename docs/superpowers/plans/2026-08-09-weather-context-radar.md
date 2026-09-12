@@ -1,5 +1,19 @@
 # Weather Context and Radar Implementation Plan
 
+> **Historical implementation plan; reconciled 2026-09-12.** The features below are
+> implemented. Unchecked steps, proposed code, expected test outcomes, and the original
+> 70/90 kB budgets preserve the implementation sequence; they are not a current work queue
+> or proof of the latest build. See [current build state](../../BUILD_STATE.md) and the
+> [engineering handoff](../../HANDOFF.md) for current source, checks, and delivery status.
+
+The current application extends this plan in two ways. RFC 0006 replaced the observation-only
+Radar tab and `RadarPanel` with the lazy **Precipitation timeline**, while retaining separate
+observation and GFS rendering. PR 10 corrects ensemble precipitation to 24 complete future
+hour-ending intervals with explicit window bounds, including timestamp-aligned synthetic
+fallbacks. It also adds truthful point-data freshness, UV protection advice at index 3,
+keyboard tooltip dismissal, and reliable pending/error feedback for replacement map grids.
+The enforced JavaScript ceilings are now 73 KiB initial and 105 KiB total gzip.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add location-correct time, interactive weather metrics, precipitation-aware scenes, and provider-isolated observed radar while preserving the dashboard's forecast and verification contracts.

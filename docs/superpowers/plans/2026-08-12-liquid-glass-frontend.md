@@ -1,5 +1,19 @@
 # Liquid Glass Frontend Implementation Plan
 
+> **Historical implementation plan; reconciled 2026-09-12.** The checked tasks record the
+> Liquid Glass implementation. Its original 73/96 kB budgets and presentation-only rollback
+> apply to that change, not the later PR 10 data and archive corrections. See
+> [current build state](../../BUILD_STATE.md), [current design guidance](../../design/liquid-glass.md),
+> and the [engineering handoff](../../HANDOFF.md) for current behavior and validation.
+
+PR 10 keeps the responsive glass surfaces and accessibility fallbacks while aligning chart
+bands with their hourly cells, wiring the temperature-trend presentation helper, correcting
+chronological narrative and percentile wording, and improving search, tooltip, onboarding,
+freshness, and map recovery feedback. Verification now uses the isolated `wx.verification.v2`
+archive; the old archive is retained. Current bundle ceilings are 73 KiB initial and 105 KiB
+total gzip. The historical statement that provider and storage behavior is unchanged describes
+the Liquid Glass redesign only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` task-by-task.
 
 **Goal:** Replace the flat translucent presentation with the approved adaptive Liquid Glass interface while preserving all weather, ensemble, verification, map, radar, location, privacy, and deployment behavior.

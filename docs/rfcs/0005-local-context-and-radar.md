@@ -4,6 +4,10 @@
 
 **Date:** 2026-08-09
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) records the PR 10
+time-axis, missing-value, refresh, and cancellation corrections. The original feature
+date is retained; current implementation contracts below were reviewed on 2026-09-12.
+
 > **Extended by RFC 0006:** The provider-native observation contract in this RFC remains in
 > force, but the observation-only Radar tab is replaced by the observed segment of a unified
 > precipitation timeline. RFC 0006 defines the explicit transition at `NOW` into modeled GFS
@@ -57,6 +61,12 @@ The metric strip deliberately separates:
   Only complete finite member rows contribute. When live members are unavailable, the
   deterministic fallback is labelled as illustrative modeled spread. Its heuristic amounts
   and member shares are not calibrated uncertainty and never enter verification.
+
+The offline sample selects its fallback probabilities by matching these endpoint instants
+to point rows, with enough explicit sample hours to fill the last complete interval after
+a partial-hour start. It does not shift the first displayed point rows into later
+precipitation endpoints. Live forecast/reference pairs use the separate corrected v2
+archive and provenance contract in [RFC 0002](0002-temperature-verification.md).
 
 Missing optional daily UV and current visibility are represented as unavailable, while
 finite zero remains valid. Their absence does not discard otherwise valid point weather or
@@ -125,6 +135,11 @@ Provider and lazy radar-chunk failures stay inside radar mode and expose touch-s
 without unmounting the forecast map or dashboard. Returning from a failed radar panel restores
 focus to the Forecast tab. Location changes abort superseded metadata requests and generation
 guards prevent late responses from replacing the current place.
+
+The shared GFS map acquisition additionally marks replacement loading before its
+400-millisecond debounce. Late aborted transports cannot clear newer loading or Retry
+state, and late canceled successes cannot populate its grid cache. This is independent
+of radar's 200-millisecond viewport settlement; see [RFC 0004](0004-interactive-forecast-map.md).
 
 Deterministic tests cover timezone/DST formatting, Open-Meteo schema parsing, local-day
 accumulation, scene classification, provider selection, NOAA frame de-duplication, RainViewer

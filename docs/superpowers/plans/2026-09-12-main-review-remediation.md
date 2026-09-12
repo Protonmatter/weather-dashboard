@@ -1,6 +1,12 @@
 # GitHub Main Review Remediation Plan
 
-> For agentic workers: execute each bounded task using the systematic-debugging and test-driven-development workflows. The user authorized implementation, then subsequently authorized committing, pushing this branch and opening a PR against main. Merge and deployment are not authorized.
+> **Completed implementation record; updated 2026-09-12.** The original tasks and PR
+> follow-ups below are implemented. The user authorized implementation, commit, push, and
+> [PR 10](https://github.com/Protonmatter/weather-dashboard/pull/10), then authorized merging
+> once all checks complete without issues and new review comments are addressed. This plan
+> does not itself establish that those gates passed or that the build merged or deployed.
+> See [current build state](../../BUILD_STATE.md) for delivery status and the
+> [engineering handoff](../../HANDOFF.md) for exact behavior and validation records.
 
 **Goal:** Correct all 19 prioritized findings from the GitHub main review and the concrete adjacent validation/dead-code gaps, preserving dashboard capabilities.
 **Architecture:** Keep the existing provider, pure-math, lifecycle and presentation boundaries. Join forecast data by absolute time, represent missingness explicitly, separate caller cancellation from failure, and use a new verification archive without overwriting legacy evidence.
@@ -75,3 +81,46 @@ Owner: root.
 - [x] Run all four functional browser projects and the visual project. Review any intentional visual changes before updating baselines; do not weaken tolerances.
 - [x] Independently review final diff, test edges and authority boundaries; resolve actionable feedback.
 - [x] Record exact changed files and validation results; present the uncommitted changes for user review before the subsequently authorized commit, push and PR.
+
+## Completed PR review follow-ups
+
+- [x] Align offline synthetic precipitation inputs with the explicit future window by
+  absolute timestamp. Keep the two additional dry sample hours needed by partial-hour starts
+  and retain the `live: false` provenance. Delivered in `521ffd9`.
+- [x] Dispatch replacement-map pending state when work is queued, retaining the 400 ms
+  acquisition debounce. Preserve usable old data, clear obsolete errors when a new request
+  starts, and stop announcing loading when the replacement fails. Delivered in `0a8de45`.
+- [x] Add separate late transport settlement coverage in `8eb002f`: an older `AbortError`
+  during replacement debounce, an older `AbortError` during replacement transport, and an
+  older `AbortError` after a newer failure. Verify loading or Retry survives as appropriate
+  and that Retry recovers. Separately verify canceled success cannot replace the new grid
+  or populate an obsolete cache entry; revisiting its viewport must acquire a fresh grid.
+- [x] Run the four new browser scenarios plus the existing debounce/failure regression
+  across Chromium, WebKit, iPhone, and Android: **20 passed**. The unit run produced
+  **409 passed / 11 live contracts skipped**; a separate strict TypeScript check of the
+  E2E spec passed because the application typecheck does not include that directory.
+- [x] Verify sensitivity in isolated, ignored source copies: bypassing the stale-abort
+  reducer guard caused the three abort cases to fail at their loading/Retry assertions;
+  removing the pre-cache success guard caused the canceled-success revisit to fail.
+  Restoring both guards and rebuilding produced **4/4 control passes**. No application
+  source or tested build artifact changed in the coverage-only `8eb002f` update.
+
+These are local validation records for the cited revisions. Controlled transport settlement
+exercises the application's HTTP/provider/hook/reducer/UI chain; it does not establish live
+provider cancellation behavior. Hosted checks and review resolution must be read for the
+exact head being merged, rather than inferred from these point-in-time results.
+
+## Documentation and hosted test setup follow-up
+
+- [x] Reconcile every existing Markdown file with the current implementation, retaining
+  dated design intent and older evidence. Add a central build record and three live browser
+  captures with provenance to the README.
+- [x] Diagnose the first Linux WebKit run of `8eb002f`: all four new cases polled transport
+  before the lazy map had a measured viewport. In `aa1f651`, wait for the mounted viewport,
+  positive measured width, and loading state before the unchanged request-count assertion.
+  Rerun the 20-case Windows matrix and strict E2E typecheck; both passed. No timeout,
+  cancellation assertion, cache check, or application code changed.
+
+Final review, hosted-check, merge, and deployment outcomes belong to the exact PR/main
+commit records linked from the build state; the completed local tasks do not substitute
+for those gates.

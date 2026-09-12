@@ -1,5 +1,21 @@
 # Unified Precipitation Timeline Implementation Plan
 
+> **Historical implementation plan; reconciled 2026-09-12.** The unified timeline is
+> implemented. Unchecked steps, proposed code, expected test outcomes, and the original
+> 73/99 kB budgets preserve the implementation sequence; they are not a current work queue
+> or proof of the latest build. See [current build state](../../BUILD_STATE.md), the
+> [implemented design](../specs/2026-08-13-unified-precipitation-timeline-design.md), and the
+> [engineering handoff](../../HANDOFF.md) for current contracts and validation.
+
+The shared `ForecastMap` grid still feeds the timeline without a duplicate GFS acquisition.
+PR 10 makes a replacement grid pending immediately while acquisition remains debounced by
+400 ms. Late cancellation cannot clear a newer pending/error state, and a canceled success
+cannot enter the map cache. Separate browser coverage now exercises both late `AbortError`
+settlement and canceled-success cache revisits. The map's hourly precipitation timeline is
+distinct from the point ensemble's corrected 24-complete-hour accumulation window. Current
+JavaScript ceilings are 73 KiB initial and 105 KiB total gzip; HRRR simulated reflectivity
+remains a future extension.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the observation-only radar view with one time-proportional precipitation timeline that preserves provider-native radar history through `NOW` and continues into clearly labelled Open-Meteo GFS precipitation through `+24h` by default or `+48h` on demand.

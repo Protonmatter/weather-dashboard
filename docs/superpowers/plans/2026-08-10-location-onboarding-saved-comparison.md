@@ -1,5 +1,18 @@
 # Location Onboarding, Saved Locations, and Comparison Implementation Plan
 
+> **Historical implementation plan; reconciled 2026-09-12.** Onboarding, saved locations,
+> and comparison are implemented. Unchecked steps, proposed code, expected test outcomes,
+> and the original 73/96 kB budgets preserve the implementation sequence; they are not a
+> current work queue or proof of the latest build. See [current build state](../../BUILD_STATE.md)
+> and the [engineering handoff](../../HANDOFF.md) for current source, checks, and delivery status.
+
+PR 10 preserves the six-place limit, explicit geolocation consent, lazy comparison, and
+two-request comparison concurrency. It corrects search query/result identity so an immediate
+Enter cannot select a preceding query's result, keeps focus inside the busy onboarding dialog,
+and reports session-only saved-location state when persistence fails. Point-data freshness and
+refresh failure remain visible without discarding the usable dashboard. The enforced JavaScript
+ceilings are now 73 KiB initial and 105 KiB total gzip.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Subagent delegation is not authorized for this task.
 
 **Goal:** Add explicit first-run geolocation consent, six browser-local saved locations with quick switching, and a lazy, bounded comparison view that opens any location in the full dashboard.

@@ -7,6 +7,10 @@
 | Supersedes | — |
 | Depends on | RFC 0001 §3 (advanced verification statistics) |
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the PR 10
+application corrections and subsequent regression coverage. The `8eb002f` late map
+transport tests do not change this archive schema or its scoring conventions.
+
 ## 1. Problem
 
 The original scorecard archived only precipitation. This RFC adds an independent

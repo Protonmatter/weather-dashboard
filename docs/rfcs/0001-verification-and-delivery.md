@@ -7,6 +7,10 @@
 | Supersedes | — |
 | Implementation | Phases 1–4 implemented; library utilities and displayed metrics distinguished below |
 
+**Current build:** [Build state and evidence](../BUILD_STATE.md) tracks the PR 10
+application corrections and the separate late-transport regression coverage added in
+`8eb002f`. This RFC describes implementation contracts; it does not certify a deployment.
+
 ## 1. Problem
 
 The dashboard renders probabilistic forecasts and accumulates local verification
@@ -111,15 +115,15 @@ a pipeline where nobody knows what a red build implies.
 
 | Class | Answers | Trigger |
 | --- | --- | --- |
-| **Static** | Does it typecheck? | every push |
-| **Unit** | Is the math right? | every push |
+| **Static** | Does it typecheck? | PRs, main pushes, nightly, manual runs |
+| **Unit** | Is the math right? | PRs, main pushes, nightly, manual runs |
 | **Contract/validation** | Do provider responses still match our parsers? | main + nightly |
-| **Regression** | Have previously fixed defects stayed fixed? | every push |
-| **Tooling regression** | Do smoke and dependency gates reject invalid results? | every push |
-| **Functional (E2E)** | Does a real browser complete real user journeys? | every push |
+| **Regression** | Have previously fixed defects stayed fixed? | PRs, main pushes, nightly, manual runs |
+| **Tooling regression** | Do smoke and dependency gates reject invalid results? | PRs, main pushes, nightly, manual runs |
+| **Functional (E2E)** | Does a real browser complete real user journeys? | PRs, main pushes, nightly, manual runs |
 | **Smoke** | Does the built artefact boot and render? | post-build, post-deploy |
-| **Dependency** | Any known CVEs or licence drift? | every push + nightly |
-| **Budget** | Does compressed JavaScript stay within the size ceilings? | every push |
+| **Dependency** | Any high/critical CVEs or licence drift? | PRs, main pushes, nightly, manual runs |
+| **Budget** | Does compressed JavaScript stay within the size ceilings? | PRs, main pushes, nightly, manual runs |
 
 Nightly runs matter for the contract class specifically: provider schemas change on their
 schedule, not ours, and we want to learn about it before a user does.
@@ -131,30 +135,36 @@ rebuilding it. `npm run test:tooling` exercises these tooling failure paths. The
 retain the 73 KiB initial-JavaScript ceiling and revise the total ceiling from 99 to 105 KiB
 to accommodate correctness and failure-state handling without adding a dependency.
 
+The map regressions also exercise transport responses that settle after cancellation,
+separately from canceling a queued debounce timer. They preserve a newer request's loading
+and Retry state and reject obsolete successful responses before cache insertion. See
+[RFC 0004](0004-interactive-forecast-map.md#8-release-gates) for the contract and
+[build state](../BUILD_STATE.md) for the validation associated with a particular revision.
+
 ## 5. Presentation targets (Phase 4)
 
 Three targets, one codebase:
 
 | Target | Viewport | Priorities |
 | --- | --- | --- |
-| Phone | 360–430 CSS px | Thumb reach, single column, no hover dependence, reduced motion honoured |
-| Tablet / laptop | 768–1440 | Two-column grid, current layout |
-| Desktop 16:9 | ≥1600, 16:9 | Full-bleed presentation, denser panels, richer motion |
+| Phone | ≤767 CSS px | Thumb reach, single column, no hover dependence, reduced motion honoured |
+| Tablet / laptop | All remaining viewports | Two-column grid |
+| Cinema | ≥1600 CSS px and aspect ratio ≥16:10 | Full-bleed presentation and denser panels |
 
-Mobile-first, progressively enhanced. Determined by `matchMedia` and container queries
-rather than user-agent sniffing.
+Mobile-first, progressively enhanced. `src/hooks/useViewport.ts` uses `matchMedia`, and
+the CSS uses matching media queries; neither relies on user-agent sniffing.
 
 ### 5.1 GPU acceleration — decision
 
-**WebGPU is not adopted at this time.** See ADR 0002. Current visuals are gradients,
-sub-100-element SVG, and ~46 CSS-animated elements — all comfortably within compositor
-budget. Adopting WebGPU now would add a capability-detection matrix and a fallback path to
-accelerate work the GPU already does through CSS compositing.
+**WebGPU is not adopted at this time.** See [ADR 0002](../adr/0002-no-webgpu-yet.md).
+Current visuals use CSS/SVG with at most 96 scene particles, plus Canvas 2D map fields and
+72/120/180 wind particles for phone/tablet/cinema. No current cross-device frame-time
+benchmark establishes a need for another rendering pipeline.
 
-The threshold that would justify it is specified so the decision is falsifiable: a particle
-advection field over the ensemble wind grid, ≥50k particles at 60fps. Below that, WebGL2
-suffices; below WebGL2's threshold, CSS suffices. A capability probe ships now so the
-decision can be revisited with data rather than re-litigated.
+The original investigation threshold remains a particle advection field at ≥50k particles
+and 60fps. This is a candidate workload for profiling, not a measured crossover point.
+`src/lib/gpu/capability.ts` provides an unused capability helper; the application does not
+invoke it or collect GPU telemetry.
 
 ## 6. Phasing
 
@@ -164,7 +174,7 @@ decision can be revisited with data rather than re-litigated.
 | 2 | Advanced verification statistics (§3) | Complete |
 | 3 | Full pipeline (§4) | Complete |
 | 4 | Responsive targets, capability probe (§5) | Complete |
-| 5 | Particle field, conditional on §5.1 threshold | Not started |
+| 5 | Large GPU particle field, conditional on §5.1 measurement | Not started; the bounded Canvas 2D map wind field is implemented separately in RFC 0004 |
 
 ## 7. References
 

@@ -1,5 +1,20 @@
 # Weather Context, Drill-Down, and Radar Design
 
+> **Current-build reconciliation, 2026-09-12.** This accepted design is implemented and
+> retained as its original decision record. RFC 0006 subsequently replaced the observation-only
+> Radar tab with **Precipitation timeline**; historical `RadarPanel` names and 70/90 kB
+> budgets below describe the earlier design. See [current build state](../../BUILD_STATE.md),
+> [RFC 0006](../../rfcs/0006-unified-precipitation-timeline.md), and the
+> [engineering handoff](../../HANDOFF.md) for current behavior, limits, and evidence.
+
+In PR 10, ensemble accumulation uses 24 complete future hour-ending intervals and displays
+its exact bounds instead of implying a rolling period beginning now. Live and synthetic
+fallback inputs align by absolute time; synthetic spread remains illustrative. The current
+UI also reports point-data age/refresh failures, advises UV protection at index 3, supports
+Escape dismissal of metric tooltips, and preserves newer map loading/error state when an
+older transport aborts late. The enforced JavaScript ceilings are 73 KiB initial and 105 KiB
+total gzip. These amendments supersede conflicting current-behavior claims below.
+
 | | |
 | --- | --- |
 | Status | Accepted |
