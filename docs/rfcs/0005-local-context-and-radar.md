@@ -51,9 +51,18 @@ The metric strip deliberately separates:
   covers DST-length days; snowfall and future intervals are excluded. Intervals ending
   exactly at local midnight belong to the preceding day. This is not a rain gauge.
 - **Next 24h precip:** live total-precipitation ensemble accumulation, including snow water
-  equivalent when applicable, includes p10–p90 and member count. When the ensemble provider
-  is unavailable, the deterministic fallback is labelled as a modeled estimate and never
-  described as live ensemble uncertainty.
+  equivalent when applicable, includes p10–p90 and retained member count over the displayed
+  24 complete provider-hour intervals. The window starts at the next boundary on the actual
+  Unix axis, including fractional UTC phases; it excludes the partial interval in progress.
+  Only complete finite member rows contribute. When live members are unavailable, the
+  deterministic fallback is labelled as illustrative modeled spread. Its heuristic amounts
+  and member shares are not calibrated uncertainty and never enter verification.
+
+Missing optional daily UV and current visibility are represented as unavailable, while
+finite zero remains valid. Their absence does not discard otherwise valid point weather or
+produce low-UV/clear-visibility advice. A point request crossing local midnight uses the
+response-time calendar day for Rain today while retaining the shared request reference for
+hourly alignment.
 
 ## 3. Interaction and accessibility
 

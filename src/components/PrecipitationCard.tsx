@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Droplets } from "lucide-react";
 import { Card, Scale } from "./Card";
 import { fmtHour } from "../lib/units";
+import { MEASURABLE_24H } from "../lib/ensemble";
+import { precipitationWindowLabel } from "../lib/presentation/precipitation";
 import type { EnsembleSummary, HourPoint } from "../lib/types";
 
 interface Props {
@@ -45,16 +47,17 @@ function FanChart({ ens, active }: { ens: EnsembleSummary; active: number | null
   );
 }
 
-function caption(ens: EnsembleSummary, hourly: readonly HourPoint[], timezone: string): string {
-  if (ens.t90 < 0.01) return "Every member stays dry through tomorrow.";
-  if (ens.t10 >= 0.01)
-    return `All members are wet — totals land between ${ens.t10.toFixed(2)}″ and ${ens.t90.toFixed(2)}″.`;
-  const peakHour = hourly[Math.min(ens.wettest, hourly.length - 1)];
-  const when = peakHour ? ` Heaviest around ${fmtHour(peakHour.time, timezone)}.` : "";
-  return `Half the members stay under ${ens.t50.toFixed(2)}″; the wettest tenth reach ${ens.t90.toFixed(2)}″.${when}`;
+function caption(ens: EnsembleSummary, timezone: string): string {
+  if (!ens.live) return "Illustrative synthetic amounts derived from precipitation probabilities; these are not calibrated rainfall or uncertainty estimates.";
+  if (ens.pop24 === 0) return `Every member stays below ${MEASURABLE_24H}″ during the displayed window.`;
+  if (ens.pop24 === 100)
+    return `All members reach ${MEASURABLE_24H}″; the central 80% of totals spans ${ens.t10.toFixed(2)}–${ens.t90.toFixed(2)}″.`;
+  const peakHour = ens.validTimes?.[ens.wettest];
+  const when = peakHour ? ` Highest median amount in the hour ending ${fmtHour(peakHour, timezone)}.` : "";
+  return `The central 80% of member totals spans ${ens.t10.toFixed(2)}–${ens.t90.toFixed(2)}″; the median is ${ens.t50.toFixed(2)}″.${when}`;
 }
 
-export function PrecipitationCard({ ens, hourly, timezone }: Props) {
+export function PrecipitationCard({ ens, timezone }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Preview follows the pointer; a pin (click/Enter) survives leaving (RFC 0003 §2.3).
@@ -76,8 +79,9 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
   };
 
   const q = shown != null ? ens.perHour[shown] : undefined;
-  const hourLabel =
-    shown != null ? (shown === 0 ? "now" : (hourly[shown] ? fmtHour(hourly[shown]!.time, timezone) : `+${shown}h`)) : null;
+  const hourLabel = shown != null && ens.validTimes?.[shown]
+    ? fmtHour(ens.validTimes[shown]!, timezone) : "time unavailable";
+  const windowLabel = precipitationWindowLabel(ens, timezone);
 
   const quantiles: ReadonlyArray<readonly [string, number, string]> = q
     ? [
@@ -91,21 +95,23 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
         ["P90", ens.t90, "rgba(255,255,255,0.85)"],
       ];
 
+  if (!ens.n || !n) return <Card title="Precipitation" icon={Droplets}><p>Precipitation window unavailable.</p></Card>;
+
   return (
     <Card title="Precipitation" icon={Droplets} className="fadein">
       <div className="flex items-baseline gap-1.5">
         <span style={{ fontSize: 34, fontWeight: 300, lineHeight: 1 }}>{Math.round(ens.pop24)}%</span>
-        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>chance</span>
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>members ≥ {MEASURABLE_24H} in</span>
       </div>
       <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.62)", marginBottom: 12 }}>
-        in the next 24 hours · {ens.n} {ens.live ? "members" : "modeled members"}
+        {windowLabel} · {ens.n} {ens.live ? "members" : "modeled members (illustrative)"}
       </div>
 
       <Scale
         stops="#4a6a86 0%, #3f9ae0 50%, #7ce0ff 100%"
         pos={ens.pop24}
-        ticks={["NONE", "LIKELY", "CERTAIN"]}
-        label="Precipitation likelihood over 24 hours"
+        ticks={["0%", "50%", "100%"]}
+        label={`Share of ${ens.live ? "ensemble" : "synthetic"} members reaching ${MEASURABLE_24H} inches during ${windowLabel}`}
       />
 
       {/* Keyboard handling lives on a div: WebKit will not reliably focus an <svg>. */}
@@ -132,6 +138,7 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
             e.preventDefault();
           } else if (e.key === "Escape") {
             setPinned(null);
+            setPreview(null);
           }
         }}
       >
@@ -142,7 +149,7 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
           style={{ display: "block", touchAction: "pan-y", cursor: "crosshair" }}
           role="img"
           aria-label={
-            `Ensemble precipitation spread. Median 24-hour total ${ens.t50.toFixed(2)} inches, ` +
+            `${ens.live ? "Ensemble" : "Illustrative synthetic"} precipitation spread. ${windowLabel}. Median window total ${ens.t50.toFixed(2)} inches, ` +
             `10th to 90th percentile ${ens.t10.toFixed(2)} to ${ens.t90.toFixed(2)} inches.`
           }
           onPointerMove={(e) => setPreview(hourAt(e.clientX))}
@@ -158,15 +165,14 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
       </div>
 
       <div className="flex justify-between" style={{ fontSize: 9, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)" }} aria-hidden="true">
-        <span>NOW</span>
-        <span>+12H</span>
-        <span>+24H</span>
+        {[0, Math.floor((n - 1) / 2), n - 1].map((index) => <span key={index}>{ens.validTimes?.[index] ? fmtHour(ens.validTimes[index]!, timezone) : "—"}</span>)}
       </div>
+      <p className="mt-1 text-[10px] text-white/55">Hour-ending amounts · inches per hour-long interval</p>
 
       <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }} aria-live="polite">
         <div className="w-full">
           <div style={{ fontSize: 9, letterSpacing: "0.06em", color: q ? "#7ce0ff" : "rgba(255,255,255,0.45)" }}>
-            {q ? `HOURLY RATE AT ${hourLabel?.toUpperCase()}` : "24-HOUR TOTALS"}
+            {q ? `HOUR ENDING ${hourLabel.toUpperCase()}` : "WINDOW TOTALS"}
           </div>
           <div className="flex gap-2">
             {quantiles.map(([k, v, c]) => (
@@ -186,7 +192,7 @@ export function PrecipitationCard({ ens, hourly, timezone }: Props) {
       </div>
 
       <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)", marginTop: 10, lineHeight: 1.35 }}>
-        {caption(ens, hourly, timezone)}
+        {caption(ens, timezone)}
       </p>
     </Card>
   );

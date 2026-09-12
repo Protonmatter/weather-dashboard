@@ -85,7 +85,7 @@ function linkedSignal(external: AbortSignal | undefined, timeoutMs: number): {
   done: () => void;
 } {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new DOMException("Timeout", "AbortError")), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(new DOMException("Request timed out", "TimeoutError")), timeoutMs);
   const onAbort = (): void => ctrl.abort(external?.reason);
   if (external) {
     if (external.aborted) onAbort();
@@ -140,6 +140,8 @@ export async function fetchJsonWithMetadata<T>(
     circuitBreakerScope,
   } = opts;
 
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
   if (cacheTtlMs > 0) {
     const hit = cache.get(url);
     if (hit && Date.now() - hit.at < cacheTtlMs) {
@@ -176,7 +178,9 @@ export async function fetchJsonWithMetadata<T>(
       // penalise the provider's circuit for it.
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-      lastError = err;
+      // Fetch implementations may report only AbortError for an aborted internal
+      // signal. Normalize the timeout here; only the caller owns cancellation.
+      lastError = linked.aborted ? new DOMException("Request timed out", "TimeoutError") : err;
       const retryable = err instanceof HttpError ? err.retryable : true;
       if (!retryable || attempt === retries) break;
 
@@ -187,7 +191,11 @@ export async function fetchJsonWithMetadata<T>(
     }
   }
 
-  recordFailure(url, circuitBreakerScope);
+  // Expected client responses (notably a postcode 404) do not imply an unhealthy
+  // provider. Rate limits, server faults, timeouts and network errors still count.
+  if (!(lastError instanceof HttpError) || lastError.retryable) {
+    recordFailure(url, circuitBreakerScope);
+  }
   throw lastError instanceof Error ? lastError : new HttpError("request failed", undefined, url);
 }
 

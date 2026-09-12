@@ -441,7 +441,7 @@ export default function ForecastMap({ place, timezone, target, unit, enabled }: 
   const summary = frame
     ? `${frameSummary(frame, layer, unit)}. Valid ${validTime(frame.time)}. ${wind ? `${windDescription} shown` : "Wind hidden"}.`
     : `Forecast map centred on ${place.name}. Forecast field not loaded.`;
-  const busy = mode === "forecast" && (state.status === "loading" || state.status === "refreshing" || (!!state.data && !grid));
+  const busy = mode === "forecast" && (state.status === "loading" || state.status === "refreshing");
 
   return (
     <Card

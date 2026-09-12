@@ -2,20 +2,19 @@
 
 | | |
 | --- | --- |
-| Status | Accepted (partially implemented) |
+| Status | Accepted; scoring and delivery contracts corrected 2026-09-12 |
 | Author | ProtonMatter |
 | Supersedes | — |
-| Implementation | Phase 1 complete; Phases 2–4 tracked below |
+| Implementation | Phases 1–4 implemented; library utilities and displayed metrics distinguished below |
 
 ## 1. Problem
 
-The dashboard renders probabilistic forecasts and scores its own calibration. Three gaps
-block it from being credible as reference-grade work:
+The dashboard renders probabilistic forecasts and accumulates local verification
+diagnostics. This RFC originally addressed three gaps:
 
-1. **Verification is shallow.** Brier, Murphy and CRPS establish calibration but say nothing
-   about *significance*. Two forecasts with different scores may not be distinguishably
-   different. Hourly forecast errors are strongly autocorrelated, so naive confidence
-   intervals are wrong by construction.
+1. **Verification needs context.** Brier, Murphy and CRPS summarize forecast/reference
+   pairs but do not establish calibration or significance by themselves. Different scores
+   may reflect sampling variability. Hourly dependence affects confidence intervals.
 2. **The pipeline verifies one dimension.** Unit tests and a typecheck do not catch a
    provider changing its response schema, a transitive dependency introducing a CVE, or a
    deploy that builds cleanly and renders a blank page.
@@ -27,7 +26,8 @@ block it from being credible as reference-grade work:
 - Running our own NWP model. Consuming and verifying open ensembles is the scope.
 - Server-side infrastructure. Client-only is a deliberate constraint; it bounds cost at zero
   and forces honesty about what can be claimed without a backend.
-- Real-time radar or satellite imagery. Both require licensed feeds.
+- Radar and satellite imagery were outside this RFC; later radar work is specified in
+  RFCs 0005–0006 and does not change the verification reference source.
 
 ## 3. Verification (Phase 2)
 
@@ -36,36 +36,53 @@ answers a question the current scorecard cannot.
 
 ### 3.1 Spread–skill ratio
 
-For a reliable ensemble the expected squared error of the ensemble mean and the ensemble
-variance are related by a finite-size correction:
+For conditionally independent, identically distributed members and a reference drawn from
+the same population, sample member variance `s²` (denominator `n−1`) and ensemble-mean
+squared error satisfy:
 
 ```
-E[spread²] = (n+1)/n · E[error²]
+E[error²] = (n+1)/n · E[s²]
+ratio = sqrt(mean((n_i+1)/n_i × s_i²)) / sqrt(mean(error_i²))
 ```
 
-Omitting the `(n+1)/n` factor makes every finite ensemble look under-dispersed. Following
-Fortin et al. (2014) the corrected ratio is reported; a value below 1 is genuine
-under-dispersion, not an artefact of member count.
+The multiplier corrects spread before comparing it with RMSE; applying it to the denominator
+would reverse the correction. It is calculated per record because retained member counts
+can differ. The ratio is undefined when RMSE is zero and is displayed as an em dash.
+One is the reference under these assumptions, not proof of calibration. A regression
+enumerates all eight combinations of two members and a reference drawn from `{−1,+1}`;
+the exact population ratio is one.
 
 ### 3.2 Hersbach CRPS decomposition
 
-CRPS = reliability + potential CRPS (Hersbach 2000). This separates "the ensemble is
-miscalibrated" from "the ensemble is calibrated but the signal is weak" — the continuous
-analogue of the Murphy split already implemented for the binary case. The identity is
-asserted in tests.
+Ordinary empirical CRPS = reliability + potential CRPS (Hersbach 2000). The temperature
+panel reports this score separately from fair CRPS: the member-pair denominators are `n²`
+and `n(n−1)`, respectively. For `[60,64]` and reference `62`, empirical CRPS is one and
+fair CRPS is zero. The Hersbach components sum to one, not zero. Member-count groups are
+decomposed separately, then combined with sample-count weights so every eligible pair
+contributes. These are sample diagnostics; the potential component is not an independently
+measured irreducible weather uncertainty.
 
 ### 3.3 PIT histogram
 
-The Probability Integral Transform generalises the rank histogram to the continuous case.
-Under calibration, PIT values are uniform on [0,1]. Reported alongside the rank histogram
-because PIT handles ties and mixed discrete-continuous distributions (precipitation has an
-atom at zero) more gracefully.
+The displayed temperature diagnostic is a finite-ensemble **rank PIT**, with a flat
+expectation under exchangeability. For `n` members and untied reference rank `r`, integrate
+uniform mass over `[r/(n+1), (r+1)/(n+1)]` into the display bins. If `k` members tie the
+reference and `b` lie below it, integrate over `[b/(n+1), (b+k+1)/(n+1)]`. This computes
+the exact fractional expectation of random rank/tie breaking without Monte Carlo jitter.
+It handles all-dry precipitation and differing member counts without a spurious edge spike.
+
+Precipitation retains raw `n+1` ranks when counts agree; ties divide their mass across
+`k+1` ranks. Mixed-count precipitation uses the same normalized rank PIT as temperature.
+The empirical-CDF `pitValues` library utility is separate: finite empirical CDF steps do
+not share this rank PIT's exact uniform finite-ensemble reference.
 
 ### 3.4 Moving-block bootstrap confidence intervals
 
-An i.i.d. bootstrap on hourly forecast scores is invalid: consecutive hours share weather
-regimes. A moving-block bootstrap with block length ≈ n^(1/3) preserves short-range
-dependence. Intervals are reported on every headline score.
+A moving-block bootstrap with block length approximately `n^(1/3)` retains some short-range
+dependence. The displayed interval is on temperature fair CRPS, using records ordered by
+valid time. This heuristic does not fully model irregular visits, multiple locations,
+reference error, or model-member dependence. The 100-sample provisional label is a display
+threshold, not a significance test or a calibration qualification.
 
 ### 3.5 Diebold–Mariano with HAC variance
 
@@ -74,11 +91,18 @@ an autocorrelation-robust variance estimate. Newey–West with Bartlett kernel a
 Diebold–Mariano statistic, plus the Harvey–Leybourne–Newbold small-sample correction, which
 matters at the sample sizes a personal archive reaches.
 
+This is a library utility. The current application does not archive a second model or
+display a significance comparison; the existence of this implementation establishes no
+empirical superiority claim.
+
 ### 3.6 Discrimination: ROC and AUC
 
 Reliability answers "are the probabilities honest". AUC answers "can the forecast separate
 events from non-events at all". A forecast can be perfectly reliable and useless; both are
 needed.
+
+ROC/AUC and the clipped ignorance score remain library utilities, not additional visible
+panels or independently validated skill results.
 
 ## 4. Delivery pipeline (Phase 3)
 
@@ -87,17 +111,25 @@ a pipeline where nobody knows what a red build implies.
 
 | Class | Answers | Trigger |
 | --- | --- | --- |
-| **Static** | Does it typecheck and lint? | every push |
+| **Static** | Does it typecheck? | every push |
 | **Unit** | Is the math right? | every push |
-| **Contract/validation** | Do provider responses still match our parsers? | every push + nightly |
+| **Contract/validation** | Do provider responses still match our parsers? | main + nightly |
 | **Regression** | Have previously fixed defects stayed fixed? | every push |
+| **Tooling regression** | Do smoke and dependency gates reject invalid results? | every push |
 | **Functional (E2E)** | Does a real browser complete real user journeys? | every push |
 | **Smoke** | Does the built artefact boot and render? | post-build, post-deploy |
 | **Dependency** | Any known CVEs or licence drift? | every push + nightly |
-| **Budget** | Has the bundle or a Core Web Vital regressed? | every push |
+| **Budget** | Does compressed JavaScript stay within the size ceilings? | every push |
 
 Nightly runs matter for the contract class specifically: provider schemas change on their
 schedule, not ours, and we want to learn about it before a user does.
+
+The smoke gate runs Chromium and checks the production application's mount and runtime/module
+errors. Dependency audit or licence evidence that cannot be obtained or parsed fails the
+gate. CI's E2E job serves the exact uploaded `dist` artifact from the build job rather than
+rebuilding it. `npm run test:tooling` exercises these tooling failure paths. The review fixes
+retain the 73 KiB initial-JavaScript ceiling and revise the total ceiling from 99 to 105 KiB
+to accommodate correctness and failure-state handling without adding a dependency.
 
 ## 5. Presentation targets (Phase 4)
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
 import { uvLabel } from "../lib/units";
 import type { CurrentConditions, EnsembleSummary } from "../lib/types";
+import { precipitationWindowLabel } from "../lib/presentation/precipitation";
 
 type MetricId =
   | "humidity"
@@ -22,10 +23,11 @@ interface Metric {
 
 interface Props {
   current: CurrentConditions;
-  uv: number;
+  uv: number | null;
   rainTodayIn: number;
   ensemble: EnsembleSummary;
   placeKey: string;
+  timezone?: string;
 }
 
 export function WeatherMetrics({
@@ -34,6 +36,7 @@ export function WeatherMetrics({
   rainTodayIn,
   ensemble,
   placeKey,
+  timezone = "UTC",
 }: Props) {
   const [preview, setPreview] = useState<MetricId | null>(null);
   const [pinned, setPinned] = useState<MetricId | null>(null);
@@ -57,9 +60,9 @@ export function WeatherMetrics({
     {
       id: "uv",
       label: "UV index",
-      value: `${Math.round(uv)} · ${uvLabel(uv)}`,
-      preview: `UV ${Math.round(uv)}, ${uvLabel(uv)}`,
-      detail: `UV index peaks at ${Math.round(uv)} today (${uvLabel(uv)}). The daily maximum can occur later than the current conditions.`,
+      value: uv === null ? "Unavailable" : `${Math.round(uv)} · ${uvLabel(uv)}`,
+      preview: uv === null ? "UV index unavailable" : `UV ${Math.round(uv)}, ${uvLabel(uv)}`,
+      detail: uv === null ? "The forecast provider did not supply today’s UV maximum." : `UV index peaks at ${Math.round(uv)} today (${uvLabel(uv)}). The daily maximum can occur later than the current conditions.`,
     },
     {
       id: "rain-today",
@@ -70,14 +73,14 @@ export function WeatherMetrics({
     },
     {
       id: "rain-next",
-      label: "Next 24h precip",
-      value: `${ensemble.t50.toFixed(2)} in`,
+      label: "Forecast precip",
+      value: ensemble.n ? `${ensemble.t50.toFixed(2)} in` : "Unavailable",
       preview: ensemble.live
-        ? `${ensemble.t50.toFixed(2)} inches ensemble precipitation median in the next 24 hours`
-        : `${ensemble.t50.toFixed(2)} inches modeled precipitation estimate in the next 24 hours`,
-      detail: ensemble.live
-        ? `The next-24-hour precipitation ensemble median is ${ensemble.t50.toFixed(2)} inches, with a 10th–90th percentile range of ${ensemble.t10.toFixed(2)}–${ensemble.t90.toFixed(2)} inches across ${ensemble.n} members. This total can include rain, showers, or snow water equivalent.`
-        : `The modeled estimate for precipitation in the next 24 hours is ${ensemble.t50.toFixed(2)} inches. Live ensemble data are unavailable, so this deterministic fallback must not be interpreted as observed or ensemble uncertainty.`,
+        ? `${ensemble.t50.toFixed(2)} inches ensemble precipitation median during ${precipitationWindowLabel(ensemble, timezone)}`
+        : "Live ensemble unavailable; synthetic precipitation amounts are illustrative.",
+      detail: !ensemble.n ? "A complete precipitation forecast window is unavailable." : ensemble.live
+        ? `For ${precipitationWindowLabel(ensemble, timezone)}, the precipitation median is ${ensemble.t50.toFixed(2)} inches, with a 10th–90th percentile range of ${ensemble.t10.toFixed(2)}–${ensemble.t90.toFixed(2)} inches across ${ensemble.n} members. This total can include rain, showers, or snow water equivalent.`
+        : `For ${precipitationWindowLabel(ensemble, timezone)}, the illustrative synthetic median is ${ensemble.t50.toFixed(2)} inches. Live ensemble data are unavailable. These probability-derived amounts are not calibrated rainfall or uncertainty estimates.`,
     },
     {
       id: "wind",
@@ -89,9 +92,9 @@ export function WeatherMetrics({
     {
       id: "visibility",
       label: "Visibility",
-      value: `${current.visibility.toFixed(1)} mi`,
-      preview: `${current.visibility.toFixed(1)} miles visibility`,
-      detail: `Estimated horizontal visibility is ${current.visibility.toFixed(1)} miles. Fog, precipitation, smoke, and haze can reduce this value.`,
+      value: current.visibility === null ? "Unavailable" : `${current.visibility.toFixed(1)} mi`,
+      preview: current.visibility === null ? "Visibility unavailable" : `${current.visibility.toFixed(1)} miles visibility`,
+      detail: current.visibility === null ? "The forecast provider did not supply visibility for this hour." : `Estimated horizontal visibility is ${current.visibility.toFixed(1)} miles. Fog, precipitation, smoke, and haze can reduce this value.`,
     },
     {
       id: "pressure",
@@ -136,7 +139,7 @@ export function WeatherMetrics({
                   setPinned((value) => (value === metric.id ? null : metric.id))
                 }
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") setPinned(null);
+                  if (event.key === "Escape") { setPinned(null); setPreview(null); }
                 }}
               >
                 <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/55">

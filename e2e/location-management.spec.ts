@@ -246,7 +246,7 @@ for (const failure of [
     await page.getByRole("dialog").getByRole("button", { name: "Use my location", exact: true }).click();
 
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("status")).toContainText(failure.copy);
+    await expect(page.getByRole("status").filter({ hasText: failure.copy })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Palo Alto");
     await expect(page.getByText(/Live data from Open-Meteo/)).toBeVisible();
     await page.reload();
@@ -262,7 +262,7 @@ test("unsupported geolocation keeps search and the live fallback usable", async 
 
   await page.getByRole("dialog").getByRole("button", { name: "Use my location", exact: true }).click();
 
-  await expect(page.getByRole("status")).toContainText("does not support automatic location");
+  await expect(page.getByRole("status").filter({ hasText: "does not support automatic location" })).toBeVisible();
   await expect(page.getByRole("combobox")).toBeEnabled();
   await expect(page.getByText(/Live data from Open-Meteo/)).toBeVisible();
 });
@@ -289,7 +289,7 @@ test("toolbar location control remains a deliberate retry after denial", async (
   });
   await page.goto("/");
   await page.getByRole("dialog").getByRole("button", { name: "Use my location", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Location access is off");
+  await expect(page.getByRole("status").filter({ hasText: "Location access is off" })).toBeVisible();
 
   await page.getByRole("button", { name: "Use my location" }).click();
 
@@ -343,7 +343,7 @@ test("retains the prior active card when a saved-location forecast fails", async
 
   await page.getByRole("button", { name: "Open London forecast" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Couldn't reach the forecast service");
+  await expect(page.getByRole("alert")).toContainText("Couldn't reach the forecast service");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Palo Alto");
   await expect(page.getByRole("button", { name: "Open Palo Alto forecast" })).toHaveAttribute("aria-current", "true");
 });
@@ -398,7 +398,7 @@ test("a full six-place list reports the limit without dropping data", async ({ p
 
   await page.getByRole("button", { name: "Save current location" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Remove a saved location before adding another");
+  await expect(page.getByRole("status").filter({ hasText: "Remove a saved location before adding another" })).toBeVisible();
   await expect(page.getByTestId("saved-location-card")).toHaveCount(6);
 });
 

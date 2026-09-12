@@ -8,14 +8,14 @@ const MAX_HEIGHT_DRIFT = 32;
 
 const PLATFORM_BASELINES = {
   linux: {
-    phone: { width: 390, height: 4129, dHash: "babe8e9efec6d69e" },
-    tablet: { width: 1180, height: 3058, dHash: "d2d47fe371761b3f" },
-    cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
+    phone: { width: 390, height: 4289, dHash: "babeae9efec6de9e" },
+    tablet: { width: 1180, height: 3160, dHash: "d6d47fe371f61b3e" },
+    cinema: { width: 1920, height: 2742, dHash: "eef2fea6d8d6dab6" },
   },
   win32: {
-    phone: { width: 390, height: 4003, dHash: "babeae9ef6d6d6be" },
-    tablet: { width: 1180, height: 3040, dHash: "d2d47f6371771b3f" },
-    cinema: { width: 1920, height: 2640, dHash: "aef2fea6d8d6dab6" },
+    phone: { width: 390, height: 4174, dHash: "babeae9efed6debe" },
+    tablet: { width: 1180, height: 3142, dHash: "dad47fe371f71b3f" },
+    cinema: { width: 1920, height: 2724, dHash: "eed2fea6d8d6dab6" },
   },
 } as const;
 
@@ -197,7 +197,7 @@ async function bootFullDashboard(page: Page): Promise<void> {
   }
   await page.goto("/");
   await expect(
-    page.getByRole("status").filter({ hasText: "Couldn't reach the forecast service" })
+    page.getByRole("alert").filter({ hasText: "Couldn't reach the forecast service" })
   ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("forecast-overview")).toBeVisible();
   await expect(page.getByTestId("weather-metrics")).toBeVisible();

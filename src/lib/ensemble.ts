@@ -5,6 +5,24 @@ export const MEASURABLE_HOURLY = 0.004;
 /** Measurable 24h accumulation, inches. */
 export const MEASURABLE_24H = 0.01;
 
+/** Missing columns never count as dry or zero degrees; retain complete finite rows. */
+function completeMembers(members: readonly (readonly number[])[], precipitation = false): readonly (readonly number[])[] {
+  const hours = Math.max(0, ...members.map(member => member.length));
+  return members.filter(member => member.length === hours && Array.from(member).every(value =>
+    typeof value === "number" && Number.isFinite(value) && (!precipitation || value >= 0)
+  ));
+}
+
+/** Complete future hour-ending intervals; the current partial hour is excluded. */
+export function precipitationWindow(referenceMs: number, axis: readonly Date[] = []): { validTimes: Date[]; windowStart: Date; windowEnd: Date } {
+  if (!Number.isFinite(referenceMs)) throw new Error("ensemble: invalid window reference");
+  // Unix output still preserves the provider's local-hour phase in fractional zones.
+  const phase = ((axis[0]?.getTime() ?? 0) % 3_600_000 + 3_600_000) % 3_600_000;
+  const start = Math.ceil((referenceMs - phase) / 3_600_000) * 3_600_000 + phase;
+  const validTimes = Array.from({ length: 24 }, (_, index) => new Date(start + (index + 1) * 3_600_000));
+  return { validTimes, windowStart: new Date(start), windowEnd: new Date(start + 24 * 3_600_000) };
+}
+
 /**
  * Quantile by linear interpolation between order statistics (type 7, R's default).
  * Input MUST be sorted ascending.
@@ -27,6 +45,7 @@ export function quantile(sorted: readonly number[], q: number): number {
 export function ensembleStats(
   members: readonly (readonly number[])[]
 ): Omit<EnsembleSummary, "source" | "live"> {
+  members = completeMembers(members, true);
   const n = members.length;
   const hours = members[0]?.length ?? 0;
 
@@ -36,7 +55,7 @@ export function ensembleStats(
 
   const perHour: HourQuantiles[] = [];
   for (let h = 0; h < hours; h++) {
-    const col = members.map((m) => m[h] ?? 0).sort((a, b) => a - b);
+    const col = members.map((m) => m[h]!).sort((a, b) => a - b);
     perHour.push({
       p10: quantile(col, 0.1),
       p50: quantile(col, 0.5),
@@ -70,13 +89,14 @@ export function ensembleStats(
 export function temperatureStats(
   members: readonly (readonly number[])[]
 ): TempQuantiles[] {
+  members = completeMembers(members);
   const n = members.length;
   const hours = members[0]?.length ?? 0;
   if (n === 0 || hours === 0) return [];
 
   const out: TempQuantiles[] = [];
   for (let h = 0; h < hours; h++) {
-    const col = members.map((m) => m[h] ?? 0).sort((a, b) => a - b);
+    const col = members.map((m) => m[h]!).sort((a, b) => a - b);
     out.push({ p10: quantile(col, 0.1), p50: quantile(col, 0.5), p90: quantile(col, 0.9) });
   }
   return out;

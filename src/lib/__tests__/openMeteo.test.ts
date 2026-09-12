@@ -55,9 +55,27 @@ const response = () => ({
 });
 
 beforeEach(() => __resetHttpState());
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Open-Meteo point forecast freshness", () => {
+  it("resets the rain calendar when a response crosses local midnight while retaining its shared hour reference", async () => {
+    const midnight = Date.parse("2026-08-10T07:00:00Z");
+    const acquiredAt = midnight - 1;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(acquiredAt);
+    const fixture = response();
+    fixture.current.time = midnight / 1000;
+    fixture.minutely_15.time = [midnight / 1000 - 900, midnight / 1000];
+    fixture.minutely_15.rain = [0.2, 0.3];
+    fixture.minutely_15.showers = [0, 0];
+    vi.stubGlobal("fetch", async () => {
+      clock.mockReturnValue(midnight + 1);
+      return new Response(JSON.stringify(fixture), { status: 200 });
+    });
+    const result = await fetchForecast(37.4419, -122.143, undefined, acquiredAt);
+    expect(result.updatedAt.getTime()).toBe(midnight);
+    expect(result.rainTodayIn).toBe(0);
+  });
+
   it("does not reuse a point response across consecutive loads", async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify(response()), {
       status: 200,
@@ -165,11 +183,89 @@ describe("Open-Meteo point forecast parser", () => {
       "forecast: invalid timezone"
     );
   });
+
+  it.each(["temperature_2m", "apparent_temperature", "weather_code", "precipitation", "relative_humidity_2m"])(
+    "rejects a missing required current %s instead of displaying zero", field => {
+      const fixture = response() as ForecastResponse;
+      fixture.current[field] = null as unknown as number;
+      expect(() => parseForecastResponse(fixture, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+    }
+  );
+
+  it("rejects incomplete hourly and daily values rather than manufacturing weather", () => {
+    const hourly = response();
+    hourly.hourly.temperature_2m = [66];
+    expect(() => parseForecastResponse(hourly, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+    const daily = response();
+    daily.daily.temperature_2m_max = [];
+    expect(() => parseForecastResponse(daily, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+  });
+
+  it("does not report missing elapsed liquid-rain samples as zero", () => {
+    const fixture = response() as ForecastResponse;
+    fixture.minutely_15.rain[0] = null;
+    expect(() => parseForecastResponse(fixture, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+  });
+
+  it.each([
+    { kind: "null sample", values: [null] },
+    { kind: "missing sample", values: [] },
+    { kind: "missing array", values: undefined },
+  ])("preserves unavailable optional UV ($kind) without losing the healthy forecast", ({ values: uv }) => {
+    const fixture = { ...response(), daily: { ...response().daily, uv_index_max: uv } } as ForecastResponse;
+    const result = parseForecastResponse(fixture, 1_786_291_200_000);
+    expect(result.daily[0]?.uv).toBeNull();
+    expect(result.current.temp).toBe(67);
+    expect(result.daily[0]?.high).toBe(72);
+  });
+
+  it.each([
+    { kind: "null sample", values: [null] },
+    { kind: "missing sample", values: [] },
+    { kind: "missing array", values: undefined },
+  ])("preserves unavailable optional visibility ($kind) without fabricating clear conditions", ({ values: visibility }) => {
+    const fixture = response() as ForecastResponse;
+    fixture.hourly.visibility = visibility;
+    const result = parseForecastResponse(fixture, 1_786_291_200_000);
+    expect(result.current.visibility).toBeNull();
+    expect(result.current.temp).toBe(67);
+  });
+
+  it("retains measured zero UV and visibility as distinct from missing values", () => {
+    const fixture = response();
+    fixture.daily.uv_index_max = [0];
+    fixture.hourly.visibility = [0, 0, 0];
+    const result = parseForecastResponse(fixture, 1_786_291_200_000);
+    expect(result.daily[0]?.uv).toBe(0);
+    expect(result.current.visibility).toBe(0);
+  });
+
+  it("retains finite optional UV and visibility and the legacy current-interval default", () => {
+    const fixture = response() as ForecastResponse;
+    delete fixture.current.interval;
+    const result = parseForecastResponse(fixture, 1_786_291_200_000);
+    expect(result.daily[0]?.uv).toBe(3);
+    expect(result.current.visibility).toBeCloseTo(12000 / 1609, 8);
+    expect(result.current.precipRateMmH).toBeCloseTo(4.064, 8);
+  });
+
+  it.each(["hourly", "daily", "minutely_15"] as const)("rejects an empty required %s axis", field => {
+    const fixture = response();
+    fixture[field].time = [];
+    expect(() => parseForecastResponse(fixture, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+  });
+
+  it("rejects duplicate hourly instants before joining ensemble temperatures", () => {
+    const fixture = response();
+    fixture.hourly.time[1] = fixture.hourly.time[0]!;
+    expect(() => parseForecastResponse(fixture, 1_786_291_200_000)).toThrow(/forecast: invalid/);
+  });
 });
 
 describe("Open-Meteo ensemble parser", () => {
   it("requires absolute Unix timestamps for a viewer-timezone-independent horizon", () => {
-    const times = Array.from({ length: 24 }, (_, index) => 1_786_287_600 + index * 3_600);
+    // Include the complete future24 window as well as elapsed/current samples.
+    const times = Array.from({ length: 48 }, (_, index) => 1_786_287_600 + index * 3_600);
     const hourly: Record<string, unknown> = { time: times };
     for (let member = 0; member < 3; member++) {
       hourly[`precipitation_member${member}`] = times.map(() => member * 0.01);

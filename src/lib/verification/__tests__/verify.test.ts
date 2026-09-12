@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { scorecard, reconcile, MIN_CONFIDENT_SAMPLES } from "../verify";
-import { saveArchive, type ForecastRecord } from "../store";
+import { loadArchive, saveArchive, type ForecastRecord } from "../store";
 import { __resetHttpState } from "../../http";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { VerificationPanel } from "../../../components/VerificationPanel";
 
 function stubStorage(): void {
   const map = new Map<string, string>();
@@ -38,7 +41,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("scorecard", () => {
@@ -68,6 +73,32 @@ describe("scorecard", () => {
     expect(temp?.crps).toBeCloseTo(1, 10);
   });
 
+  it("reports the empirical CRPS decomposed by Hersbach separately from fair CRPS", () => {
+    const temp = scorecard([record()]).temp!;
+    expect(temp.crps).toBe(0);
+    expect(temp.empiricalCrps).toBe(1);
+    expect(temp.reliability + temp.potential).toBeCloseTo(temp.empiricalCrps, 12);
+  });
+
+  it("decomposes every member-count group without dropping records", () => {
+    const temp = scorecard([
+      record(),
+      record({ tMembers: [60, 62, 64], tObserved: 62 }),
+    ]).temp!;
+    // Empirical CRPSs: 1 for two members, 4/9 for three.
+    expect(temp.empiricalCrps).toBeCloseTo(13 / 18, 12);
+    expect(temp.reliability + temp.potential).toBeCloseTo(13 / 18, 12);
+  });
+
+  it("shows an independently verified temperature track when rain is still missing", () => {
+    const score = scorecard([record({ observed: undefined })]);
+    const markup = renderToStaticMarkup(createElement(VerificationPanel, { score }));
+    expect(markup).toContain("TEMPERATURE");
+    expect(markup).toContain("Empirical CRPS");
+    expect(markup).not.toContain("No scored forecasts yet");
+    expect(markup).not.toContain("Under-dispersed");
+  });
+
   it("counts samples and distinct locations on the temperature track", () => {
     const temp = scorecard([
       record(),
@@ -93,7 +124,18 @@ describe("scorecard", () => {
       record({ valid: NOW - 2 * HOUR, tObserved: 59 }),
       record({ valid: NOW - 3 * HOUR, tObserved: 66 }),
     ]).temp;
-    expect(temp?.pit.reduce((a, b) => a + b, 0)).toBe(3);
+    expect(temp?.pit.reduce((a, b) => a + b, 0)).toBeCloseTo(3, 12);
+  });
+
+  it("includes changing precipitation member counts in a normalized rank histogram", () => {
+    const score = scorecard([
+      record({ members: [0, 0], observed: 0 }),
+      record({ members: [0, 0, 0], observed: 0 }),
+    ]);
+    expect(score.ranks.reduce((a, b) => a + b, 0)).toBeCloseTo(score.samples, 12);
+    expect(score.ranks.every(value => Math.abs(value - 2 / score.ranks.length) < 1e-12)).toBe(true);
+    const markup = renderToStaticMarkup(createElement(VerificationPanel, { score }));
+    expect(markup).toContain("Precipitation rank PIT histogram");
   });
 
   it("marks the temperature track provisional below the shared sample threshold", () => {
@@ -140,24 +182,25 @@ describe("reconcile", () => {
     return urls;
   }
 
-  const elapsedIso = new Date(NOW - HOUR).toISOString();
+  const elapsedSeconds = (NOW - HOUR) / 1000;
 
   it("requests both variables with Fahrenheit spelled out — the unit trap", () => {
     // Omitting temperature_unit silently yields Celsius and a plausibly-sized,
     // wrong CRPS (RFC 0002 §3.3). This pins the request, not the parser.
     saveArchive([record({ observed: undefined, tObserved: undefined })]);
-    const urls = stubFetch({ time: [elapsedIso], precipitation: [0.01], temperature_2m: [68] });
+    const urls = stubFetch({ time: [elapsedSeconds], precipitation: [0.01], temperature_2m: [68] });
     return reconcile().then(() => {
       expect(urls.length).toBe(1);
       expect(urls[0]).toContain("hourly=precipitation,temperature_2m");
       expect(urls[0]).toContain("temperature_unit=fahrenheit");
       expect(urls[0]).toContain("precipitation_unit=inch");
+      expect(urls[0]).toContain("timeformat=unixtime");
     });
   });
 
   it("fills both observations from one response", async () => {
     saveArchive([record({ observed: undefined, tObserved: undefined })]);
-    stubFetch({ time: [elapsedIso], precipitation: [0.01], temperature_2m: [68] });
+    stubFetch({ time: [elapsedSeconds], precipitation: [0.01], temperature_2m: [68] });
     const filled = await reconcile();
     expect(filled).toBe(1);
     const temp = scorecard().temp;
@@ -166,11 +209,83 @@ describe("reconcile", () => {
 
   it("still fills precipitation when the response omits the temperature array", async () => {
     saveArchive([record({ observed: undefined, tObserved: undefined })]);
-    stubFetch({ time: [elapsedIso], precipitation: [0.01] });
+    stubFetch({ time: [elapsedSeconds], precipitation: [0.01] });
     const filled = await reconcile();
     expect(filled).toBe(1);
     const s = scorecard();
     expect(s.samples).toBe(1);
     expect(s.temp).toBeNull();
+  });
+
+  it.each(["UTC", "America/New_York", "Asia/Kolkata", "Pacific/Chatham"])(
+    "matches absolute valid instants in the %s viewer timezone", async (timezone) => {
+      vi.stubEnv("TZ", timezone);
+      saveArchive([record({ observed: undefined, tObserved: undefined })]);
+      stubFetch({ time: [elapsedSeconds], precipitation: [0.12], temperature_2m: [68] });
+      expect(await reconcile()).toBe(1);
+      expect(loadArchive()[0]).toMatchObject({ valid: NOW - HOUR, observed: 0.12, tObserved: 68 });
+    }
+  );
+
+  it("leaves a null amount pending and fills it from a later finite response", async () => {
+    saveArchive([record({ observed: undefined, tObserved: undefined })]);
+    stubFetch({ time: [elapsedSeconds], precipitation: [null], temperature_2m: [62] });
+    await reconcile();
+    expect(loadArchive()[0]?.observed).toBeUndefined();
+    expect(loadArchive()[0]?.tObserved).toBe(62);
+    __resetHttpState();
+    stubFetch({ time: [elapsedSeconds], precipitation: [0], temperature_2m: [99] });
+    await reconcile();
+    expect(loadArchive()[0]?.observed).toBe(0);
+    expect(loadArchive()[0]?.tObserved).toBe(62);
+  });
+
+  it("retries a temperature-only backlog without requiring new rain forecasts", async () => {
+    saveArchive([record({ tObserved: undefined })]);
+    stubFetch({ time: [elapsedSeconds], precipitation: [99], temperature_2m: [62] });
+    expect(await reconcile()).toBe(1);
+    expect(loadArchive()[0]?.tObserved).toBe(62);
+    expect(loadArchive()[0]?.observed).toBe(0.02);
+  });
+
+  it("fills temperature when precipitation is omitted and records source retrieval time", async () => {
+    saveArchive([record({ observed: undefined, tObserved: undefined })]);
+    stubFetch({ time: [elapsedSeconds], temperature_2m: [62] });
+    expect(await reconcile()).toBe(1);
+    expect(loadArchive()[0]?.observed).toBeUndefined();
+    expect(loadArchive()[0]?.tObserved).toBe(62);
+    expect(loadArchive()[0]?.tObservedFetchedAt).toBeGreaterThanOrEqual(NOW);
+  });
+
+  it("rejects timestamp format drift instead of guessing a timezone", async () => {
+    saveArchive([record({ observed: undefined, tObserved: undefined })]);
+    stubFetch({ time: [new Date(NOW - HOUR).toISOString()], precipitation: [1], temperature_2m: [62] });
+    expect(await reconcile()).toBe(0);
+  });
+
+  it("does not turn cached future values into observations when the clock advances", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(NOW - 10 * 60_000);
+    saveArchive([
+      record({ observed: undefined, tObserved: undefined }),
+      record({ valid: NOW, observed: undefined, tObserved: undefined }),
+    ]);
+    const urls = stubFetch({
+      time: [elapsedSeconds, NOW / 1000],
+      precipitation: [0.01, 0.2], temperature_2m: [62, 70],
+    });
+    expect(await reconcile()).toBe(1);
+    clock.mockReturnValue(NOW + 5 * 60_000);
+    expect(await reconcile()).toBe(0);
+    expect(urls).toHaveLength(1); // the full forecast response is still in the 30-minute cache
+    expect(loadArchive()[1]?.observed).toBeUndefined();
+    expect(loadArchive()[1]?.tObserved).toBeUndefined();
+
+    clock.mockReturnValue(NOW + 21 * 60_000);
+    stubFetch({ time: [NOW / 1000], precipitation: [0.03], temperature_2m: [64] });
+    expect(await reconcile()).toBe(1);
+    expect(loadArchive()[1]).toMatchObject({
+      observed: 0.03, tObserved: 64,
+      observedFetchedAt: NOW + 21 * 60_000, tObservedFetchedAt: NOW + 21 * 60_000,
+    });
   });
 });

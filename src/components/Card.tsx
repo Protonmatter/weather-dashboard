@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { glassClass } from "../lib/presentation/glass";
 
 type CardElement = "section" | "article" | "header" | "div";
 type CardLevel = "panel" | "hero" | "overlay" | "map";
@@ -37,7 +38,7 @@ export function Card({
   const Element = as;
   return (
     <Element
-      className={`glass-surface glass-surface--${level} flex flex-col ${paddingClass[padding]} ${className}`}
+      className={glassClass(level, { className: `flex flex-col ${paddingClass[padding]} ${className}` })}
       style={style}
       data-testid={testId}
       data-glass-level={level}

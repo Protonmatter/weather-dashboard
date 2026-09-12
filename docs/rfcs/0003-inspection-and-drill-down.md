@@ -46,10 +46,13 @@ place changes — an hour index is meaningless across locations.
 
 `fetchForecast` previously discarded 216 of the 240 fetched hours at parse time. The
 parser now keeps every hour from "now" onward and consumers slice what they need: the
-strip its 24, the hero its 12, day drill-down its calendar day. Recording is explicitly
-capped to the ensemble's 24-hour window at the call site — a 240-hour `validTimes` axis
-against 24-hour member rows would archive sixteen phantom zero-member records per real
-one.
+strip its 24, the hero its 12, day drill-down its calendar day. Recording uses the
+ensemble's explicit `validTimes`, the 24 hour-ending precipitation endpoints, rather than
+the first 24 positions in the point-forecast array. Archived temperature rows match those
+endpoints; the visible temperature band matches the strip's instantaneous axis separately.
+The displayed accumulation window begins at the next complete provider-hour boundary,
+preserving fractional UTC phases. A short or missing member row cannot manufacture extra
+zero-valued records: the provider and archive boundaries reject missing values.
 
 ## 3. Surfaces
 

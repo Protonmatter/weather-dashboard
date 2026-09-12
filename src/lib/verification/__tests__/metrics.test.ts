@@ -183,12 +183,11 @@ describe("rankHistogram", () => {
     expect(bins[0]).toBe(1);
   });
 
-  it("splits ties toward the middle rather than piling them at an edge", () => {
-    // All members zero, observation zero: 4 ties -> rank 2, not 0 or 4.
+  it("distributes tied observation mass uniformly across every admissible rank", () => {
     const bins = rankHistogram([{ members: [0, 0, 0, 0], observed: 0 }]);
-    expect(bins[2]).toBe(1);
-    expect(bins[0]).toBe(0);
-    expect(bins[4]).toBe(0);
+    expect(bins).toEqual([0.2, 0.2, 0.2, 0.2, 0.2]);
+    expect(rankHistogram([{ members: [1, 2, 2, 3], observed: 2 }]))
+      .toEqual([0, 1 / 3, 1 / 3, 1 / 3, 0]);
   });
 
   it("skips occasions whose member count does not match", () => {

@@ -93,10 +93,10 @@ describe("ensembleStats", () => {
     expect(ensembleStats(members).wettest).toBe(7);
   });
 
-  it("tolerates ragged member series without throwing", () => {
+  it("tolerates ragged member series without padding incomplete members", () => {
     const members = [[0.1, 0.2, 0.3], [0.1, 0.2], [0.4]];
     expect(() => ensembleStats(members)).not.toThrow();
-    expect(ensembleStats(members).n).toBe(3);
+    expect(ensembleStats(members).n).toBe(1);
   });
 });
 

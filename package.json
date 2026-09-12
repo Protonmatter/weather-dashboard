@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:tooling": "node --test scripts/__tests__/*.test.mjs",
     "test:watch": "vitest",
     "size": "node scripts/size-budget.mjs",
     "e2e": "playwright test",

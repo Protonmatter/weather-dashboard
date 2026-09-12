@@ -4,6 +4,7 @@ import {
   hersbachDecomposition,
   pitValues,
   pitHistogram,
+  ensemblePitHistogram,
   blockBootstrapCI,
   dieboldMariano,
   rocCurve,
@@ -38,10 +39,32 @@ describe("spreadSkillRatio", () => {
 
   it("applies the (n+1)/n finite-size correction", () => {
     // Two members {-1, 1}: sample variance = 2, correction (2+1)/2 = 1.5,
-    // corrected spread = sqrt(2/1.5). Error of the mean (0) against obs 0 is 0.
+    // E[MSE] = (n+1)/n * sample variance; corrected spread = sqrt(3).
     const s = spreadSkillRatio([{ members: [-1, 1], observed: 0 }]);
-    expect(s.spread).toBeCloseTo(Math.sqrt(2 / 1.5), 10);
+    expect(s.spread).toBeCloseTo(Math.sqrt(3), 10);
     expect(s.members).toBe(2);
+  });
+
+  it("returns exactly one for the complete exchangeable two-member population", () => {
+    const pairs: EnsemblePair[] = [];
+    for (const x of [-1, 1]) for (const z of [-1, 1]) for (const observed of [-1, 1]) {
+      pairs.push({ members: [x, z], observed });
+    }
+    expect(spreadSkillRatio(pairs).ratio).toBeCloseTo(1, 12);
+  });
+
+  it("corrects each record using its own member count", () => {
+    const pairs = [
+      { members: [-1, 1], observed: 1 }, // corrected variance 3
+      { members: [-1, 0, 1], observed: -1 }, // corrected variance 4/3
+    ];
+    expect(spreadSkillRatio(pairs).spread).toBeCloseTo(Math.sqrt(13 / 6), 12);
+    expect(spreadSkillRatio([...pairs].reverse()).spread).toBeCloseTo(Math.sqrt(13 / 6), 12);
+  });
+
+  it("leaves a ratio undefined when the mean has no error", () => {
+    expect(spreadSkillRatio([{ members: [-1, 1], observed: 0 }]).ratio).toBeNull();
+    expect(spreadSkillRatio([{ members: [0, 0], observed: 0 }]).ratio).toBeNull();
   });
 
   it("reports under-dispersion when the truth sits far outside a tight ensemble", () => {
@@ -154,9 +177,27 @@ describe("PIT", () => {
     expect(pitValues([{ members: [1, 2, 3], observed: -99 }])[0]).toBe(0);
   });
 
-  it("places a fully tied block at the midpoint rather than an edge", () => {
-    // The atom at zero in precipitation: all members dry, observation dry.
-    expect(pitValues([{ members: [0, 0, 0, 0], observed: 0 }])[0]).toBe(0.5);
+  it("randomizes empirical PIT ties reproducibly instead of making a midpoint spike", () => {
+    const pairs = Array.from({ length: 1000 }, () => ({ members: [0, 0, 0, 0], observed: 0 }));
+    const values = pitValues(pairs);
+    expect(values).toEqual(pitValues(pairs));
+    for (const count of pitHistogram(values)) expect(count).toBeGreaterThan(60);
+  });
+
+  it("gives fully tied finite ensembles an exactly uniform rank PIT", () => {
+    expect(ensemblePitHistogram).toBeTypeOf("function");
+    const histogram = ensemblePitHistogram([{ members: [0, 0, 0, 0], observed: 0 }]);
+    for (const mass of histogram) expect(mass).toBeCloseTo(0.1, 12);
+  });
+
+  it("preserves rank PIT mass across differing ensemble sizes and ties", () => {
+    expect(ensemblePitHistogram).toBeTypeOf("function");
+    const histogram = ensemblePitHistogram([
+      { members: [0, 0], observed: 0 },
+      { members: [1, 2, 3], observed: 99 },
+      { members: [1, 2, 2, 3], observed: 2 },
+    ]);
+    expect(histogram.reduce((sum, mass) => sum + mass, 0)).toBeCloseTo(3, 12);
   });
 
   it("is approximately uniform for a calibrated ensemble", () => {

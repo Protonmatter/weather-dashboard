@@ -228,7 +228,7 @@ test("shows a wall clock in the selected location timezone", async ({ page }) =>
 test("previews and pins weather metric details with keyboard parity", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByTestId("weather-metric-rain-next")).toContainText("Next 24h precip");
+  await expect(page.getByTestId("weather-metric-rain-next")).toContainText("Forecast precip");
   const humidity = page.getByTestId("weather-metric-humidity");
   await humidity.focus();
   await expect(page.getByRole("tooltip")).toContainText("84% relative humidity");
@@ -250,7 +250,8 @@ test("does not present modeled precipitation spread as a live ensemble", async (
 
   await page.getByTestId("weather-metric-rain-next").click();
   const detail = page.getByTestId("weather-metric-detail");
-  await expect(detail).toContainText("modeled estimate");
+  await expect(detail).toContainText("illustrative synthetic median");
+  await expect(detail).toContainText("not calibrated rainfall or uncertainty estimates");
   await expect(detail).toContainText("Live ensemble data are unavailable");
   await expect(detail).not.toContainText("across 31 members");
 });
@@ -579,7 +580,7 @@ test("keeps observed radar usable when modeled precipitation fails", async ({ pa
 
 test("surfaces the ensemble precipitation panel with quantiles", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Precipitation")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Precipitation", exact: true })).toBeVisible();
   await expect(page.getByText("P10")).toBeVisible();
   await expect(page.getByText("P90")).toBeVisible();
   await expect(page.getByRole("img", { name: /Ensemble precipitation spread/ })).toBeVisible();
@@ -1260,7 +1261,7 @@ test("settles a disabled sample forecast as precipitation unavailable", async ({
   );
 
   await page.goto("/");
-  await expect(page.getByText(/Sample forecast/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("weather-freshness")).toContainText("Sample forecast", { timeout: 15_000 });
   await revealForecastMap(page);
   await page.getByRole("tab", { name: "Precipitation timeline" }).click();
 
@@ -1735,7 +1736,7 @@ test("degrades to a labelled sample forecast when providers fail", async ({ page
   await page.unroute("**/api.open-meteo.com/**");
   await page.route("**/api.open-meteo.com/**", (r) => r.abort());
   await page.goto("/");
-  await expect(page.getByText(/Sample forecast/)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("weather-freshness")).toContainText("Sample forecast", { timeout: 15000 });
 });
 
 test("resets Rain today and refreshes point data at location-local midnight", async ({ page }) => {
@@ -1843,13 +1844,13 @@ test("archives each live forecast with temperature members", async ({ page }) =>
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   await expect
-    .poll(async () => page.evaluate(() => localStorage.getItem("wx.verification.v1") !== null), {
+    .poll(async () => page.evaluate(() => localStorage.getItem("wx.verification.v2") !== null), {
       timeout: 10_000,
     })
     .toBe(true);
 
   const records = await page.evaluate(
-    () => JSON.parse(localStorage.getItem("wx.verification.v1") ?? "[]") as Array<{
+    () => JSON.parse(localStorage.getItem("wx.verification.v2") ?? "[]") as Array<{
       live: boolean;
       members: number[];
       tMembers?: number[];
@@ -1884,7 +1885,7 @@ test("scores elapsed hours and surfaces the temperature verification track", asy
       r.fulfill({
         json: {
           hourly: {
-            time: validTimes.map((t) => new Date(t).toISOString()),
+            time: validTimes.map((t) => t / 1000),
             precipitation: [0.03, 0],
             temperature_2m: [60.4, 61.1],
           },
@@ -1902,7 +1903,7 @@ test("scores elapsed hours and surfaces the temperature verification track", asy
       live: true,
       tMembers: Array.from({ length: 12 }, (_, m) => 58 + i + m * 0.7),
     }));
-    localStorage.setItem("wx.verification.v1", JSON.stringify(records));
+    localStorage.setItem("wx.verification.v2", JSON.stringify(records));
   }, validTimes);
 
   await page.goto("/");
@@ -1948,10 +1949,10 @@ test("scrubs the precipitation fan into hourly-rate mode with the keyboard", asy
   const fan = page.getByRole("group", { name: /arrow keys inspect hours/ });
   await fan.focus();
   await fan.press("ArrowRight");
-  await expect(page.getByText(/HOURLY RATE AT/)).toBeVisible();
+  await expect(page.getByText(/HOUR ENDING/)).toBeVisible();
   await expect(page.getByText("WET", { exact: true })).toBeVisible();
   await fan.press("Escape");
-  await expect(page.getByText("24-HOUR TOTALS")).toBeVisible();
+  await expect(page.getByText("WINDOW TOTALS")).toBeVisible();
 });
 
 test("has no critical accessibility violations in landmark structure", async ({ page }) => {

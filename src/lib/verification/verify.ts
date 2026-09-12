@@ -1,4 +1,4 @@
-import { fetchJson } from "../http";
+import { fetchJsonWithMetadata } from "../http";
 import { MEASURABLE_HOURLY } from "../ensemble";
 import {
   loadArchive,
@@ -25,8 +25,7 @@ import {
 import {
   hersbachDecomposition,
   spreadSkillRatio,
-  pitValues,
-  pitHistogram,
+  ensemblePitHistogram,
   blockBootstrapCI,
   crpsSeries,
   type Interval,
@@ -48,6 +47,8 @@ export interface Scorecard {
   crps: number;
   reliability: ReliabilityBin[];
   ranks: number[];
+  /** Raw ranks for a shared member count; normalized rank PIT when counts vary. */
+  rankMode?: "rank" | "rank-pit";
   flatness: number;
   confident: boolean;
   /** Distinct locations contributing, for honesty about generalisation. */
@@ -62,14 +63,16 @@ export interface TempScorecard {
   locations: number;
   /** Mean fair CRPS, °F. */
   crps: number;
+  /** Ordinary empirical CRPS, decomposed by the Hersbach components below. */
+  empiricalCrps: number;
   /** Moving-block bootstrap interval on the CRPS mean — scores are serially dependent. */
   crpsCI: Interval;
-  /** Hersbach split: crps ≈ reliability + potential. Lower reliability is better. */
+  /** Hersbach split of empiricalCrps, not the fair finite-ensemble estimator. */
   reliability: number;
-  /** CRPS achievable after perfect recalibration. The irreducible part. */
+  /** Hersbach potential component for this empirical sample decomposition. */
   potential: number;
   spreadSkill: SpreadSkill;
-  /** 10-bin PIT histogram. Uniform under calibration. */
+  /** Fractional finite-ensemble rank PIT; uniform under exchangeability. */
   pit: number[];
   confident: boolean;
 }
@@ -77,9 +80,8 @@ export interface TempScorecard {
 /**
  * Observations for verification.
  *
- * Open-Meteo's `past_days` returns its best-estimate analysis for elapsed hours. That is
- * a reanalysis, not a rain gauge — good enough to detect miscalibration, but the UI must
- * not claim these are station observations.
+ * Open-Meteo's `past_days` supplies elapsed operational model values. This is a model
+ * reference, not station observations or an independent reanalysis validation.
  */
 async function fetchObserved(
   lat: number,
@@ -91,12 +93,12 @@ async function fetchObserved(
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&hourly=precipitation,temperature_2m&past_days=14&forecast_days=1` +
-    `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto`;
+    `&precipitation_unit=inch&temperature_unit=fahrenheit&timezone=auto&timeformat=unixtime`;
 
-  const j = await fetchJson<{
+  const { value: j, fetchedAt } = await fetchJsonWithMetadata<{
     hourly: {
-      time: string[];
-      precipitation: (number | null)[];
+      time: number[];
+      precipitation?: (number | null)[];
       temperature_2m?: (number | null)[];
     };
   }>(url, { signal, cacheTtlMs: 1_800_000 });
@@ -106,12 +108,22 @@ async function fetchObserved(
   const now = Date.now();
 
   j.hourly.time.forEach((t, i) => {
-    const at = new Date(t).getTime();
-    if (at >= now) return; // an unelapsed hour is not an observation
+    if (typeof t !== "number" || !Number.isFinite(t)) return;
+    const at = t * 1000;
+    if (!Number.isFinite(new Date(at).getTime())) return;
+    // A cached full-day forecast must not become a reference merely because time
+    // passed: the hour must also have elapsed when these values were retrieved.
+    if (at >= Math.min(now, fetchedAt)) return;
     const temp = j.hourly.temperature_2m?.[i];
+    const precip = j.hourly.precipitation?.[i];
+    const hasTemp = typeof temp === "number" && Number.isFinite(temp);
+    const hasPrecip = typeof precip === "number" && Number.isFinite(precip) && precip >= 0;
+    if (!hasTemp && !hasPrecip) return;
     out.set(`${loc}@${at}`, {
-      precip: j.hourly.precipitation[i] ?? 0,
-      ...(temp !== null && temp !== undefined ? { temp } : {}),
+      ...(hasPrecip ? { precip } : {}),
+      ...(hasTemp ? { temp } : {}),
+      fetchedAt,
+      referenceSource: "open-meteo-forecast-past",
     });
   });
 
@@ -123,7 +135,8 @@ function pendingLocations(archive: readonly ForecastRecord[]): string[] {
   const now = Date.now();
   const locs = new Set<string>();
   for (const r of archive) {
-    if (r.observed === undefined && r.valid < now) locs.add(r.loc);
+    const missingTemp = (r.tMembers?.length ?? 0) > 1 && r.tObserved === undefined;
+    if ((r.observed === undefined || missingTemp) && r.valid < now) locs.add(r.loc);
   }
   return [...locs];
 }
@@ -167,11 +180,12 @@ function tempScorecard(archive: readonly ForecastRecord[]): TempScorecard | null
     samples: scored.length,
     locations: new Set(scored.map((r) => r.loc)).size,
     crps: meanCrps(pairs),
+    empiricalCrps: meanCrps(pairs, false),
     crpsCI: blockBootstrapCI(crpsSeries(pairs)),
     reliability: hersbach.reliability,
     potential: hersbach.potential,
     spreadSkill: spreadSkillRatio(pairs),
-    pit: pitHistogram(pitValues(pairs)),
+    pit: ensemblePitHistogram(pairs),
     confident: scored.length >= MIN_CONFIDENT_SAMPLES,
   };
 }
@@ -188,7 +202,8 @@ export function scorecard(archive: readonly ForecastRecord[] = loadArchive()): S
     .filter((r) => r.members.length > 1)
     .map((r) => ({ members: r.members, observed: r.observed ?? 0 }));
 
-  const ranks = rankHistogram(ensemble);
+  const mixedCounts = new Set(ensemble.map(pair => pair.members.length)).size > 1;
+  const ranks = mixedCounts ? ensemblePitHistogram(ensemble) : rankHistogram(ensemble);
   const occurred = binary.filter((b) => b.occurred).length;
 
   return {
@@ -200,6 +215,7 @@ export function scorecard(archive: readonly ForecastRecord[] = loadArchive()): S
     crps: meanCrps(ensemble),
     reliability: reliabilityBins(binary),
     ranks,
+    rankMode: mixedCounts ? "rank-pit" : "rank",
     flatness: rankHistogramFlatness(ranks),
     confident: scored.length >= MIN_CONFIDENT_SAMPLES,
     locations: new Set(scored.map((r) => r.loc)).size,

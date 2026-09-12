@@ -1,7 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Search, X, Loader2, MapPin, RefreshCw } from "lucide-react";
 import { flag } from "../lib/units";
 import type { Place } from "../lib/types";
+import { glassClass } from "../lib/presentation/glass";
 
 interface Props {
   query: string;
@@ -20,10 +21,16 @@ interface Props {
   onUnit: () => void;
 }
 
-const controlClass = "glass-surface glass-surface--control glass-surface--interactive glass-control rounded-full";
+const controlClass = glassClass("control", { interactive: true, className: "glass-control rounded-full" });
 
 export function SearchBar(p: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const expanded = p.open && !p.busy && p.results.length > 0;
+  useEffect(() => setActiveIndex(-1), [p.query, p.results]);
+  useEffect(() => {
+    if (expanded && activeIndex >= 0) boxRef.current?.querySelector(`#place-option-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, expanded]);
 
   useEffect(() => {
     const close = (event: MouseEvent): void => {
@@ -35,7 +42,9 @@ export function SearchBar(p: Props) {
 
   return (
     <div className="mb-6 flex items-center gap-2">
-      <div ref={boxRef} className="relative min-w-0 flex-1" style={{ maxWidth: 520 }}>
+      <div ref={boxRef} className="relative min-w-0 flex-1" style={{ maxWidth: 520 }} onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) p.onOpen(false);
+      }}>
         <div className={`${controlClass} flex items-center gap-2 px-3.5 py-2`}>
           <Search size={15} className="shrink-0 text-white/60" aria-hidden="true" />
           <input
@@ -44,14 +53,28 @@ export function SearchBar(p: Props) {
             onChange={(event) => p.onQuery(event.target.value)}
             onFocus={() => p.results.length && p.onOpen(true)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && p.results[0]) p.onPick(p.results[0]);
-              if (event.key === "Escape") p.onOpen(false);
+              if (event.key === "Escape") { p.onOpen(false); setActiveIndex(-1); }
+              if (p.busy || !p.results.length) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                p.onOpen(true);
+                setActiveIndex((index) => event.key === "ArrowDown"
+                  ? Math.min(p.results.length - 1, index + 1)
+                  : index < 0 ? p.results.length - 1 : Math.max(0, index - 1));
+              }
+              if (event.key === "Enter" && expanded) {
+                event.preventDefault();
+                const selected = p.results[activeIndex < 0 ? 0 : activeIndex];
+                if (selected) p.onPick(selected);
+              }
             }}
             placeholder="City, postal code, or country"
             aria-label="Search for a city, postal code, or country"
-            aria-expanded={p.open}
+            aria-expanded={expanded}
             role="combobox"
-            aria-controls="place-results"
+            aria-autocomplete="list"
+            aria-controls={expanded ? "place-results" : undefined}
+            aria-activedescendant={expanded && activeIndex >= 0 ? `place-option-${activeIndex}` : undefined}
             data-glass-control="search"
             className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none"
           />
@@ -63,11 +86,11 @@ export function SearchBar(p: Props) {
           {p.busy && <Loader2 size={14} className="animate-spin" aria-label="Searching" />}
         </div>
 
-        {p.open && p.results.length > 0 && (
+        {expanded && (
           <ul id="place-results" role="listbox" className="glass-surface glass-surface--overlay absolute left-0 right-0 z-20 mt-2 overflow-hidden p-1.5" data-glass-level="overlay">
-            {p.results.map((result) => (
-              <li key={`${result.lat},${result.lon},${result.name}`} role="option" aria-selected={false}>
-                <button type="button" onClick={() => p.onPick(result)} className="glass-control w-full rounded-xl px-3 py-2 text-left">
+            {p.results.map((result, index) => (
+              <li key={`${result.lat},${result.lon},${result.name}`} id={`place-option-${index}`} role="option" aria-selected={activeIndex === index}>
+                <button type="button" tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onPointerEnter={() => setActiveIndex(index)} onClick={() => p.onPick(result)} className={`glass-control w-full rounded-xl px-3 py-2 text-left ${activeIndex === index ? "glass-inset--active" : ""}`}>
                   <span className="flex items-center gap-2.5">
                     <span className="w-5 shrink-0 text-center text-[15px]">
                       {flag(result.cc) || <MapPin size={13} className="text-white/55" aria-hidden="true" />}

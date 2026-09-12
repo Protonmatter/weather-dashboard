@@ -1,4 +1,4 @@
-import { ensembleStats, synthMembers } from "./ensemble";
+import { ensembleStats, synthMembers, precipitationWindow } from "./ensemble";
 import { dateAtLocalTime, hourInTimeZone } from "./time";
 import type { WeatherBundle } from "./types";
 
@@ -67,7 +67,12 @@ export function fallbackBundle(): WeatherBundle {
     hourly,
     daily,
     aqi: 28,
-    ensemble: { ...ensembleStats(synthMembers(HOUR_POP)), source: "modeled spread", live: false },
+    ensemble: {
+      ...ensembleStats(synthMembers(HOUR_POP)),
+      ...precipitationWindow(now.getTime()),
+      source: "modeled spread",
+      live: false,
+    },
     live: false,
     timezone: FALLBACK_TIMEZONE,
     updatedAt: now,

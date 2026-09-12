@@ -23,7 +23,7 @@ interface SearchState {
  *      guarantees only the newest query can write to state.
  */
 export function usePlaceSearch(query: string): SearchState {
-  const [state, setState] = useState<SearchState>({ results: [], busy: false, error: null });
+  const [state, setState] = useState<SearchState & { query: string }>({ query: "", results: [], busy: false, error: null });
 
   const controller = useRef<AbortController | null>(null);
   const seq = useRef(0);
@@ -32,17 +32,17 @@ export function usePlaceSearch(query: string): SearchState {
     const q = query.trim();
 
     controller.current?.abort();
+    const id = ++seq.current;
 
     if (q.length < MIN_QUERY) {
-      setState({ results: [], busy: false, error: null });
+      setState({ query: q, results: [], busy: false, error: null });
       return;
     }
 
-    const id = ++seq.current;
     const ctrl = new AbortController();
     controller.current = ctrl;
 
-    setState((s) => ({ ...s, busy: true }));
+    setState({ query: q, results: [], busy: true, error: null });
 
     const timer = setTimeout(() => {
       void (async () => {
@@ -50,6 +50,7 @@ export function usePlaceSearch(query: string): SearchState {
           const results = await searchPlaces(q, ctrl.signal);
           if (id !== seq.current) return; // superseded
           setState({
+            query: q,
             results,
             busy: false,
             error: results.length
@@ -59,6 +60,7 @@ export function usePlaceSearch(query: string): SearchState {
         } catch (err) {
           if (isAbort(err) || id !== seq.current) return;
           setState({
+            query: q,
             results: [],
             busy: false,
             error:
@@ -78,7 +80,9 @@ export function usePlaceSearch(query: string): SearchState {
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  return state;
+  // Effects run after render. Hide old results synchronously on the first render of
+  // a new query so an immediate Enter cannot select a previous query's place.
+  return state.query === query.trim() ? state : { results: [], busy: query.trim().length >= MIN_QUERY, error: null };
 }
 
 interface WeatherLoader<T> {

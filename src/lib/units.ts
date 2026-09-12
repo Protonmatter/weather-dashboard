@@ -28,8 +28,6 @@ export const AQI_BANDS: ReadonlyArray<readonly [number, string, string]> = [
 export const aqiBand = (v: number): readonly [number, string, string] =>
   AQI_BANDS.find((b) => v <= b[0]) ?? AQI_BANDS[AQI_BANDS.length - 1]!;
 
-export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
 export function fmtHour(d: Date, timeZone?: string): string {
   if (timeZone) return formatLocalHour(d, timeZone);
   const h = d.getHours();
