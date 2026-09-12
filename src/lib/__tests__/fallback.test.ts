@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fallbackBundle } from "../fallback";
+import { ensembleStats, synthMembers } from "../ensemble";
 import { formatLocalTime, localDateKey } from "../time";
 
 afterEach(() => vi.useRealTimers());
@@ -55,5 +56,45 @@ describe("fallback forecast timezone", () => {
     expect(bundle.hourly[0]!.time.toISOString()).toBe("2026-11-01T09:00:00.000Z");
     expect(formatLocalTime(bundle.hourly[0]!.time, bundle.timezone)).toBe("1:00 AM");
     expect(formatLocalTime(bundle.hourly[1]!.time, bundle.timezone)).toBe("2:00 AM");
+  });
+});
+
+describe("fallback precipitation window", () => {
+  it.each([
+    ["2026-09-12T12:00:00Z", "2026-09-12T12:00:00Z", 1, 65],
+    ["2026-09-12T12:30:00Z", "2026-09-12T13:00:00Z", 2, 58],
+    ["2026-03-08T09:30:00Z", "2026-03-08T10:00:00Z", 2, 58],
+    ["2026-11-01T08:30:00Z", "2026-11-01T09:00:00Z", 2, 58],
+    ["2026-11-01T09:30:00Z", "2026-11-01T10:00:00Z", 2, 58],
+  ] as const)("matches complete source intervals at %s", (now, start, offset, firstPop) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+
+    const bundle = fallbackBundle();
+    const startMs = Date.parse(start);
+    const expectedHours = bundle.hourly.slice(offset, offset + 24);
+    const endpoints = Array.from({ length: 24 }, (_, index) => startMs + (index + 1) * 3_600_000);
+
+    expect(bundle.ensemble.windowStart?.getTime()).toBe(startMs);
+    expect(bundle.ensemble.windowEnd?.getTime()).toBe(startMs + 24 * 3_600_000);
+    expect(bundle.ensemble.validTimes?.map(time => time.getTime())).toEqual(endpoints);
+    expect(expectedHours.map(hour => hour.time.getTime())).toEqual(endpoints);
+    expect(expectedHours[0]?.pop).toBe(firstPop);
+    expect(expectedHours.at(-1)?.pop).toBe(0);
+    expect(expectedHours.at(-1)?.precipitationIn).toBe(0);
+    expect(bundle.ensemble).toMatchObject(ensembleStats(synthMembers(expectedHours.map(hour => hour.pop))));
+    expect(bundle.ensemble.n).toBe(31);
+    expect(bundle.ensemble.perHour).toHaveLength(24);
+    expect(bundle.ensemble.live).toBe(false);
+    expect(bundle.ensemble.source).toBe("modeled spread");
+    expect(bundle.ensemble.memberSeries).toBeUndefined();
+  });
+
+  it("uses the partial-hour window probabilities for every quantile and total", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-12T12:30:00Z"));
+    const expectedPop = [58, 40, 24, 16, 10, 8, 6, 5, 4, 4, 3, 3, 4, 5, 6, 5, 4, 2, 2, 1, 1, 0, 0, 0];
+
+    expect(fallbackBundle().ensemble).toMatchObject(ensembleStats(synthMembers(expectedPop)));
   });
 });

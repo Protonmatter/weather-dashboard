@@ -4,9 +4,11 @@ import type { WeatherBundle } from "./types";
 
 const FALLBACK_TIMEZONE = "America/Los_Angeles";
 
-const HOUR_TEMPS = [67, 66, 65, 66, 68, 70, 69, 66, 62, 59, 57, 56, 55, 54, 54, 54, 54, 55, 56, 58, 61, 64, 68, 71];
-const HOUR_CODES = [61, 61, 61, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0];
-const HOUR_POP = [72, 65, 58, 40, 24, 16, 10, 8, 6, 5, 4, 4, 3, 3, 4, 5, 6, 5, 4, 2, 2, 1, 1, 0];
+// Two explicit dry sample hours extend beyond the displayed 24-hour strip so even
+// a partial-hour startup has data through the final complete precipitation interval.
+const HOUR_TEMPS = [67, 66, 65, 66, 68, 70, 69, 66, 62, 59, 57, 56, 55, 54, 54, 54, 54, 55, 56, 58, 61, 64, 68, 71, 71, 71];
+const HOUR_CODES = [61, 61, 61, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0, 0, 0];
+const HOUR_POP = [72, 65, 58, 40, 24, 16, 10, 8, 6, 5, 4, 4, 3, 3, 4, 5, 6, 5, 4, 2, 2, 1, 1, 0, 0, 0];
 const DAY_ROWS: ReadonlyArray<readonly [number, number, number]> = [
   [54, 72, 61], [53, 73, 3], [54, 75, 0], [55, 76, 0], [56, 74, 3],
   [55, 77, 0], [56, 78, 0], [57, 76, 3], [56, 75, 0], [57, 77, 0],
@@ -35,6 +37,11 @@ export function fallbackBundle(): WeatherBundle {
       precipitationIn: i < 3 ? 0.03 : 0,
     };
   });
+
+  const window = precipitationWindow(now.getTime(), hourly.map(hour => hour.time));
+  const pointHours = new Map(hourly.map(hour => [hour.time.getTime(), hour]));
+  const probabilities = window.validTimes.map(time => pointHours.get(time.getTime())?.pop);
+  const complete = probabilities.every((pop): pop is number => typeof pop === "number" && Number.isFinite(pop));
 
   const daily = DAY_ROWS.map(([low, high, code], i) => {
     const date = dateAtLocalTime(now, FALLBACK_TIMEZONE, 12, 0, i);
@@ -68,9 +75,9 @@ export function fallbackBundle(): WeatherBundle {
     daily,
     aqi: 28,
     ensemble: {
-      ...ensembleStats(synthMembers(HOUR_POP)),
-      ...precipitationWindow(now.getTime()),
-      source: "modeled spread",
+      ...ensembleStats(complete ? synthMembers(probabilities) : []),
+      ...window,
+      source: complete ? "modeled spread" : "spread unavailable",
       live: false,
     },
     live: false,

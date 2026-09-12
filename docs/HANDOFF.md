@@ -118,7 +118,7 @@ The delivery gates now fail incomplete audit/licence evidence, launch a real Chr
 startup smoke, verify relative deployment subpaths, and test the same built artifact in
 E2E, visual and deployment jobs. No package dependency or lockfile changes were made.
 
-## Validation status
+## Initial remediation validation (0f9a7c1)
 
 All final local checks below passed on the completed source and built artifact. Windows
 used Node 24.18.0 and npm 11.16.0. Linux checks used WSL Ubuntu ARM64, Node 20.20.2,
@@ -166,6 +166,32 @@ Temporary validation preview servers have been stopped. Linux runtime libraries 
 were extracted into a task-local directory without apt installation or global configuration
 changes. These runtime artifacts are not repository changes.
 
+## PR 10 review follow-up: offline precipitation alignment
+
+The review identified that the cold/offline sample labeled complete future intervals but
+synthesized probabilities from the start of the current-hour template. Exact-hour startup
+was one source row behind; partial-hour startup was two rows behind, and the final required
+source endpoints were absent. The sample now has two explicit dry terminal hours and joins
+each precipitation endpoint to its source timestamp before generating synthetic members.
+Missing/nonfinite matches produce an unavailable spread, never a fabricated zero. The first
+24 displayed hourly rows are preserved, and sample output remains excluded from verification.
+
+Six regressions failed before implementation and pass after it. They cover exact and partial
+hours, the spring DST gap, both fall-fold occurrences, complete endpoint coverage, dry tails,
+and all quantiles/totals against an independently specified probability vector.
+
+Follow-up validation: 409 unit/component tests passed (11 live contracts remain separately
+selected), the focused provider/component/fallback group passed 41 tests, and all 12 existing
+sample/fallback browser journeys passed across Chromium, WebKit, iPhone and Android.
+Typecheck, build, real Chromium startup smoke, and diff checks passed. Gzipped JavaScript is
+72.9 KiB initial and 103.6 KiB total, within the unchanged 73/105 KiB limits. The new entry is
+`dist/assets/index-Xm8ugzzL.js`, SHA-256
+`5b32b2a4a96a23f8240518e491c89c6e08bd8b45221140acc03b9ee7fe1203ad`.
+The previous full browser/visual/live-contract results above belong to the initial remediation;
+they were not rerun in full for this sample-only correction. Hosted checks are attached to
+the current PR commit. Independent review found no additional issue in the two-file code/test
+diff. The PR now changes 60 repository files relative to the reviewed main commit.
+
 ## Changed-file inventory
 
 The following repository files differ from the reviewed main commit. Generated builds,
@@ -211,6 +237,7 @@ browser captures, runtime files and logs are excluded from source control.
 - [src/index.css](../src/index.css)
 - [src/lib/__tests__/contract.test.ts](../src/lib/__tests__/contract.test.ts)
 - [src/lib/__tests__/ensemble.test.ts](../src/lib/__tests__/ensemble.test.ts)
+- [src/lib/__tests__/fallback.test.ts](../src/lib/__tests__/fallback.test.ts)
 - [src/lib/__tests__/openMeteo.test.ts](../src/lib/__tests__/openMeteo.test.ts)
 - [src/lib/__tests__/provider-lifecycle.test.ts](../src/lib/__tests__/provider-lifecycle.test.ts)
 - [src/lib/ensemble.ts](../src/lib/ensemble.ts)
