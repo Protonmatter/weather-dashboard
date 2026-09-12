@@ -166,7 +166,7 @@ Temporary validation preview servers have been stopped. Linux runtime libraries 
 were extracted into a task-local directory without apt installation or global configuration
 changes. These runtime artifacts are not repository changes.
 
-## PR 10 review follow-up: offline precipitation alignment
+## PR 10 review follow-up: offline precipitation alignment (521ffd9)
 
 The review identified that the cold/offline sample labeled complete future intervals but
 synthesized probabilities from the start of the current-hour template. Exact-hour startup
@@ -190,7 +190,34 @@ Typecheck, build, real Chromium startup smoke, and diff checks passed. Gzipped J
 The previous full browser/visual/live-contract results above belong to the initial remediation;
 they were not rerun in full for this sample-only correction. Hosted checks are attached to
 the current PR commit. Independent review found no additional issue in the two-file code/test
-diff. The PR now changes 60 repository files relative to the reviewed main commit.
+diff. That commit changed 60 repository files relative to the reviewed main commit.
+
+## PR 10 review follow-up: pending replacement map feedback
+
+The review identified that a new viewport hid the mismatched old grid immediately, while
+`useForecastMap` waited until the 400 ms debounce elapsed to report loading. The hook now
+dispatches `start` as soon as acquisition is scheduled. Only cache lookup/network acquisition
+is debounced. Repeated panning therefore retains pending feedback, and Retry clears the old
+error immediately. Existing success, failure and reset transitions remain unchanged, so
+terminal error/stale states do not restore the perpetual-loading defect.
+
+The strengthened replacement-grid browser regression failed on the old build because the
+loading indicator was absent before acquisition. It now checks immediate feedback, a second
+pan after 200 ms, no request until 400 ms after that second pan, terminal failure, and Retry's
+own 399+1 ms debounce before successful completion. This exercises superseded queued timers;
+it does not introduce a separate late in-flight transport-abort regression.
+
+Independent review found no additional issue in the hook/test diff. All 12 targeted browser
+journeys passed across Chromium, WebKit, iPhone and Android: replacement/retry debounce,
+stationary-grid expiry, and retained current-viewport data after a failed refresh. The full
+unit/component suite passed 409 tests (11 separately selected live contracts skipped), and
+typecheck, build, startup smoke, bundle budgets and diff checks passed. Gzipped JavaScript is
+72.9 KiB initial and 103.5 KiB total, within the unchanged 73/105 KiB limits. The current entry
+is `dist/assets/index-B05xrsZh.js`, SHA-256
+`e94654f3299452ea8b14d51484d78c7424a53e13e4f646f8ac34d4a5f6696e08`.
+The full hosted functional/visual suite passed on the preceding commit `521ffd9`; its results
+are separate from the targeted local validation of this change and the new commit's CI.
+The PR now changes 61 repository files relative to the reviewed main commit.
 
 ## Changed-file inventory
 
@@ -234,6 +261,7 @@ browser captures, runtime files and logs are excluded from source control.
 - [src/components/WeatherFreshness.tsx](../src/components/WeatherFreshness.tsx)
 - [src/components/WeatherMetrics.tsx](../src/components/WeatherMetrics.tsx)
 - [src/hooks/useSearch.ts](../src/hooks/useSearch.ts)
+- [src/hooks/useForecastMap.ts](../src/hooks/useForecastMap.ts)
 - [src/index.css](../src/index.css)
 - [src/lib/__tests__/contract.test.ts](../src/lib/__tests__/contract.test.ts)
 - [src/lib/__tests__/ensemble.test.ts](../src/lib/__tests__/ensemble.test.ts)

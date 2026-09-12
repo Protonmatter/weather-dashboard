@@ -29,6 +29,8 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
 
     const id = ++requestId.current;
     const controller = new AbortController();
+    // Queued replacements are pending immediately; only acquisition is debounced.
+    dispatch({ type: "start", requestId: id });
     let refreshTimer: number | undefined;
     const scheduleRefresh = (grid: MapForecastGrid): void => {
       const delay = mapForecastRefreshDelayMs(grid);
@@ -38,7 +40,6 @@ export function useForecastMap(spec: MapGridSpec | null, enabled: boolean) {
       }, delay);
     };
     const timer = window.setTimeout(() => {
-      dispatch({ type: "start", requestId: id });
       const cached = cache.current.get(spec.key);
       if (cached && isMapForecastFresh(cached)) {
         cache.current.delete(spec.key);
