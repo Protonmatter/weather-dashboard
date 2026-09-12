@@ -192,7 +192,7 @@ they were not rerun in full for this sample-only correction. Hosted checks are a
 the current PR commit. Independent review found no additional issue in the two-file code/test
 diff. That commit changed 60 repository files relative to the reviewed main commit.
 
-## PR 10 review follow-up: pending replacement map feedback
+## PR 10 review follow-up: pending replacement map feedback (0a8de45)
 
 The review identified that a new viewport hid the mismatched old grid immediately, while
 `useForecastMap` waited until the 400 ms debounce elapsed to report loading. The hook now
@@ -218,6 +218,47 @@ is `dist/assets/index-B05xrsZh.js`, SHA-256
 The full hosted functional/visual suite passed on the preceding commit `521ffd9`; its results
 are separate from the targeted local validation of this change and the new commit's CI.
 The PR now changes 61 repository files relative to the reviewed main commit.
+
+## Separate late transport settlement coverage
+
+Four additional browser cases control the map fetch promise after its real linked signal
+has been aborted. Production HTTP, provider parsing, map hook, reducer and UI code remain
+unchanged. A response-body completion marker and a browser MessageChannel task drain the
+promise chain before assertions, without advancing the paused acquisition clock.
+
+The cases verify that a late AbortError cannot clear a replacement's debounce/loading state,
+cannot stop a newer in-flight request, and cannot clear a newer failure or its Retry control.
+A fourth case releases a successful response despite cancellation, checks that the current
+grid still displays its own distinct pressure data, then returns to the canceled viewport
+and requires a fresh request. This also detects canceled responses entering the hook cache,
+even if the reducer independently rejects their obsolete success action.
+
+All 20 targeted browser cases passed across Chromium, WebKit, iPhone and Android (16 new
+case/platform combinations and four existing debounce/failure journeys). The full unit suite
+passed 409 tests with 11 separately selected live contracts skipped. The E2E file passed a
+separate strict TypeScript check because application typecheck does not include `e2e/`.
+Application source and the `0a8de45` build artifact above are hash-verified unchanged.
+
+Independent sensitivity checks used an ignored archive of that commit. Bypassing only
+the reducer's stale-abort guard made all three abort cases fail at their intended loading
+or Retry assertions. Removing the hook's pre-cache success guard made the fourth case fail
+because revisiting the canceled viewport incorrectly reused its cache entry. Restoring both
+files and rebuilding made all four cases pass. No mutation touched the working application
+or its build output; evidence and logs are in `output/late-transport-sensitivity/`.
+
+Commands for this coverage update:
+
+```sh
+npx playwright test e2e/review-remediation.spec.ts --grep 'late transport abort|late canceled success|a failed replacement map grid' --project=chromium --project=webkit --project=iphone --project=android --workers=2
+npm test
+npx tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --lib ES2022,DOM --strict --skipLibCheck --types node e2e/review-remediation.spec.ts
+git -c core.safecrlf=false diff --check
+```
+
+These are deterministic browser integration checks with controlled transport responses.
+They do not exercise live provider cancellation behavior. The complete functional and
+visual matrix was not rerun locally for this test/documentation-only update; new hosted
+results are attached to its PR commit separately.
 
 ## Changed-file inventory
 

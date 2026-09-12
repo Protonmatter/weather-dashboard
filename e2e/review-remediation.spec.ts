@@ -52,6 +52,169 @@ async function pickTokyo(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Tokyo", exact: true })).toBeVisible();
 }
 
+type MapTransportOutcome = "abort" | "success" | "error";
+interface DeferredMapTransport {
+  url: string;
+  signal: AbortSignal | null;
+  settled: boolean;
+  bodyRead: boolean;
+  settle: (outcome: MapTransportOutcome) => void;
+}
+type MapTransportWindow = Window & { reviewMapTransports: DeferredMapTransport[] };
+
+async function bootDeferredMap(page: Page): Promise<void> {
+  await page.addInitScript((base: number) => {
+    const records: DeferredMapTransport[] = [];
+    (window as unknown as MapTransportWindow).reviewMapTransports = records;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+      if (url.hostname !== "api.open-meteo.com" || !url.pathname.endsWith("/v1/gfs")) {
+        return nativeFetch(input, init);
+      }
+      // Deliberately retain the promise after signal.abort; the test chooses when
+      // the transport settles, while HTTP/provider/hook code remains unmodified.
+      return new Promise<Response>((resolve, reject) => {
+        const pressure = 980 + records.length * 44;
+        const record: DeferredMapTransport = {
+          url: url.toString(), signal: init?.signal ?? (input instanceof Request ? input.signal : null),
+          settled: false, bodyRead: false,
+          settle(outcome) {
+            if (record.settled) throw new Error("Map transport already settled");
+            record.settled = true;
+            if (outcome === "abort") return reject(new DOMException("Delayed transport abort", "AbortError"));
+            const latitudes = url.searchParams.get("latitude")!.split(",").map(Number);
+            const longitudes = url.searchParams.get("longitude")!.split(",").map(Number);
+            const mapTimes = Array.from({ length: 48 }, (_, hour) => new Date((base + hour * 3600) * 1000).toISOString().slice(0, 16));
+            const payload = latitudes.map((latitude, index) => ({
+              latitude, longitude: longitudes[index],
+              hourly_units: { temperature_2m: "°C", pressure_msl: "hPa", precipitation: "mm", wind_speed_10m: "km/h", wind_direction_10m: "°" },
+              hourly: { time: mapTimes, temperature_2m: mapTimes.map(() => 15),
+                pressure_msl: mapTimes.map(() => pressure), precipitation: mapTimes.map(() => 0),
+                wind_speed_10m: mapTimes.map(() => 12), wind_direction_10m: mapTimes.map(() => 180) },
+            }));
+            const response = new Response(JSON.stringify(outcome === "error" ? {} : payload), {
+              status: outcome === "error" ? 400 : 200, headers: { "Content-Type": "application/json" },
+            });
+            const readJson = response.json.bind(response);
+            response.json = async () => { const value = await readJson(); record.bodyRead = true; return value; };
+            resolve(response);
+          },
+        };
+        records.push(record);
+      });
+    };
+  }, BASE);
+  await boot(page);
+  await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
+  await expect.poll(() => mapTransports(page)).toHaveLength(1);
+  // Shift the wall clock without firing the outstanding transport's timeout.
+  await page.clock.setFixedTime(new Date(NOW.getTime() + 60_000));
+  await page.clock.pauseAt(new Date(NOW.getTime() + 61_000));
+}
+
+async function mapTransports(page: Page) {
+  return page.evaluate(() => (window as unknown as MapTransportWindow).reviewMapTransports.map(record => ({
+    url: record.url, aborted: record.signal?.aborted ?? false, settled: record.settled, bodyRead: record.bodyRead,
+  })));
+}
+
+async function settleMapTransport(page: Page, index: number, outcome: MapTransportOutcome): Promise<void> {
+  await page.evaluate(({ index, outcome }) => (window as unknown as MapTransportWindow).reviewMapTransports[index]!.settle(outcome), { index, outcome });
+  if (outcome === "success") await expect.poll(async () => (await mapTransports(page))[index]?.bodyRead).toBe(true);
+  // Drain the HTTP/provider/hook promise chain through a real browser task, without
+  // advancing the paused 400 ms acquisition clock or relying on a fixed sleep.
+  await page.evaluate(() => new Promise<void>(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };
+    channel.port2.postMessage(null);
+  }));
+}
+
+for (const phase of ["debounce", "transport"] as const) {
+  test(`review: late transport abort preserves replacement ${phase}`, async ({ page }) => {
+    await bootDeferredMap(page);
+    const viewport = page.getByTestId("forecast-map-viewport");
+    const loading = page.getByText("Loading forecast field…", { exact: true });
+    await viewport.focus();
+    await viewport.press("ArrowRight");
+    await expect.poll(async () => (await mapTransports(page))[0]?.aborted).toBe(true);
+    if (phase === "transport") {
+      await page.clock.runFor(400);
+      await expect.poll(() => mapTransports(page)).toHaveLength(2);
+    }
+    await settleMapTransport(page, 0, "abort");
+    await expect(loading).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    expect(await mapTransports(page)).toHaveLength(phase === "debounce" ? 1 : 2);
+    if (phase === "debounce") {
+      await page.clock.runFor(399);
+      expect(await mapTransports(page)).toHaveLength(1);
+      await expect(loading).toBeVisible();
+      await page.clock.runFor(1);
+      await expect.poll(() => mapTransports(page)).toHaveLength(2);
+    }
+    const requests = await mapTransports(page);
+    expect(requests[0]?.url).not.toBe(requests[1]?.url);
+    expect(requests[1]?.aborted).toBe(false);
+    await settleMapTransport(page, 1, "success");
+    await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast.*1024/ })).toBeVisible();
+    await expect(loading).toHaveCount(0);
+    expect(await mapTransports(page)).toHaveLength(2);
+  });
+}
+
+test("review: late transport abort preserves the newer failure and Retry", async ({ page }) => {
+  await bootDeferredMap(page);
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(async () => (await mapTransports(page))[0]?.aborted).toBe(true);
+  await page.clock.runFor(400);
+  await expect.poll(() => mapTransports(page)).toHaveLength(2);
+  await settleMapTransport(page, 1, "error");
+  const retry = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  await settleMapTransport(page, 0, "abort");
+  await expect(retry).toBeVisible();
+  await expect(page.getByText("The forecast field could not be loaded. Try this area again.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Loading forecast field…", { exact: true })).toHaveCount(0);
+  expect(await mapTransports(page)).toHaveLength(2);
+  await retry.click();
+  await page.clock.runFor(400);
+  await expect.poll(() => mapTransports(page)).toHaveLength(3);
+  await settleMapTransport(page, 2, "success");
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast.*1068/ })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+});
+
+test("review: late canceled success cannot replace or cache an obsolete grid", async ({ page }) => {
+  await bootDeferredMap(page);
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.focus();
+  await viewport.press("ArrowRight");
+  await expect.poll(async () => (await mapTransports(page))[0]?.aborted).toBe(true);
+  await page.clock.runFor(400);
+  await expect.poll(() => mapTransports(page)).toHaveLength(2);
+  const requests = await mapTransports(page);
+  expect(requests[0]?.url).not.toBe(requests[1]?.url);
+  await settleMapTransport(page, 1, "success");
+  const currentField = page.getByRole("img", { name: /Mean-sea-level pressure forecast.*1024/ });
+  await expect(currentField).toBeVisible();
+  await settleMapTransport(page, 0, "success");
+  await expect(currentField).toBeVisible();
+  await expect(page.getByText("Loading forecast field…", { exact: true })).toHaveCount(0);
+  expect(await mapTransports(page)).toHaveLength(2);
+  // Revisiting A must acquire fresh data, rather than use the canceled response
+  // from the hook's cache even if its obsolete reducer action was discarded.
+  await viewport.press("ArrowLeft");
+  await page.clock.runFor(400);
+  await expect.poll(() => mapTransports(page)).toHaveLength(3);
+  expect((await mapTransports(page))[2]?.url).toBe(requests[0]?.url);
+  await settleMapTransport(page, 2, "success");
+  await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast.*1068/ })).toBeVisible();
+});
+
 test("review: hour cells and ensemble band share a horizontal time scale", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page);
