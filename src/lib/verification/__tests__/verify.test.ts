@@ -279,6 +279,7 @@ describe("reconcile", () => {
     const urls = stubSixthLocation();
     expect(await reconcile()).toBe(0);
     clearArchive();
+    expect(localStorage.getItem("wx.verification.cursor.v1")).toBeNull();
     saveBacklog();
     __resetHttpState();
     expect(await reconcile()).toBe(0);

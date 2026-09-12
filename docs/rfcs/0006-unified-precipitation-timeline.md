@@ -4,9 +4,10 @@
 
 **Date:** 2026-08-13
 
-**Current build:** [Build state and evidence](../BUILD_STATE.md) records the PR 10
-corrections and validation through the separate `8eb002f` late-transport coverage.
-The original feature date is retained; current contracts were reviewed on 2026-09-12.
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the current
+application revision, PR 10 corrections, and validation evidence. The original feature date
+is retained; current timeline contracts were reviewed on 2026-09-12 and remain unchanged by
+the later verification reconciliation rotation.
 
 ## 1. Decision
 

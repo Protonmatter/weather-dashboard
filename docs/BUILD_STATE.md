@@ -11,15 +11,15 @@ issue mappings and historical test results remain in [HANDOFF.md](HANDOFF.md).
 | --- | --- |
 | Repository / change | [Protonmatter/weather-dashboard PR #10](https://github.com/Protonmatter/weather-dashboard/pull/10) |
 | Reviewed main baseline | `9e7ad980210e222ec13da3ec27d2c3d9fcb861e8` |
-| Latest application-code commit | `0a8de45c2980f37789357927282be4816b17365e` |
+| Latest application-code commit | `eb1ae8337a26fc0d184402b2ecbfaf92512870fa` — bounded reconciliation rotation |
 | Separate late-transport coverage commit | `8eb002f373e96a398916d2978185a1decc6a8f8c` |
 | Measured-viewport test setup follow-up | `aa1f6513b3fa584f95be08c656efde5252712172` |
 | Package version | `0.2.0`; these updates are identified by commit, with no package-version change |
-| Documentation / images | This documentation revision; application source, dependencies, and build output are unchanged |
-| Built entry | `dist/assets/index-B05xrsZh.js` |
-| Entry SHA-256 | `e94654f3299452ea8b14d51484d78c7424a53e13e4f646f8ac34d4a5f6696e08` |
+| Documentation / images | Current behavior follows `eb1ae83`; each screenshot's source artifact and capture conditions are recorded in its provenance |
+| Built entry | `dist/assets/index-Ds4kO-jC.js` |
+| Entry SHA-256 | `49ec86d56bcbecadf80c113c08559ef01989c2f3084f93af22f5c48c1fb46b6c` |
 | Lockfile SHA-256 | `3342a7bea472664910b075daded93c0dec3a0d3a5464a5131d77ea401d23da3c` |
-| Gzipped JavaScript | Initial 72.9 KiB / 73 KiB ceiling; total 103.5 KiB / 105 KiB ceiling |
+| Gzipped JavaScript | Initial 72.9 KiB / 73 KiB ceiling; total 103.7 KiB / 105 KiB ceiling |
 
 The hashes identify the locally validated artifact and dependency lockfile, not a claim
 about bytes currently served by a public host. CI builds once and downstream browser,
@@ -38,6 +38,13 @@ visual, and deployment jobs consume that run's uploaded `dist` artifact.
   decomposition, tied ranks, mixed member counts, and finite-ensemble spread correction
   have separate conventions and regressions. References are elapsed operational model
   values, not independent station observations or a calibration qualification.
+- **Bounded reconciliation:** each pass selects at most five distinct pending locations in
+  sorted order, starting after the last scheduled location and wrapping at the end. The
+  separate `wx.verification.cursor.v1` key persists that location; failed writes still
+  advance an in-session cursor. Missing, out-of-window, and failed references cannot keep
+  the same initial five locations at the front of every pass. An already-aborted caller
+  does not consume a batch. Clearing the archive resets session scheduling and attempts to
+  remove both v2 evidence and the cursor, while retaining legacy v1.
 - **UI recovery:** query-bound search selection, modal focus containment, storage failure
   notices, missing UV/visibility, chart alignment, and freshness/refresh errors follow the
   actual data and operation state. Loading for map replacement and Retry begins before
@@ -55,11 +62,12 @@ visual, and deployment jobs consume that run's uploaded `dist` artifact.
 
 | Scope | Recorded evidence |
 | --- | --- |
-| Current unit/component suite | `npm test`: 409 passed; 11 live contracts excluded from the ordinary run |
+| Current unit/component suite | `npm test`: 418 passed at `eb1ae83`; 11 live contracts excluded from the ordinary run |
+| Reconciliation rotation regression | Nine added cases: eight failed before the fix; all 34 tests in `verify.test.ts` passed afterward. Independent verification review ran 60 verification tests successfully |
 | Separate map-transport/browser coverage | 20 passed on Windows: four new cases plus the existing debounce/failure journey on Chromium, WebKit, iPhone, and Android; rerun after the measured-viewport setup correction |
 | E2E TypeScript | Strict standalone check of `e2e/review-remediation.spec.ts` passed; the application tsconfig excludes E2E files |
 | Regression sensitivity | Isolated stale-abort guard mutation: three expected failures. Isolated pre-cache guard mutation: one expected failure. Restored source/build: all four passed |
-| Application build checks | Typecheck, build, budget, and Chromium startup smoke passed at `0a8de45`; artifact identity is unchanged by the test/docs follow-ups |
+| Application build checks | Typecheck, build, budget, and Chromium startup smoke passed at `eb1ae83`; entry identity and current measurements are above |
 | Earlier full local matrix | 466 functional passes / 8 existing platform skips, and 10 Windows + 10 Linux ARM64 visual passes at `0f9a7c1`; these are historical results, not the new head's CI |
 | Live provider contracts | 11 passed separately during the initial remediation; a preceding Photon HTTP 503 is retained in the handoff history |
 | Live screenshot session | Desktop overview, GFS pressure map, and phone-width captures used actual provider responses on September 12; [provenance](screenshots/README.md) |
@@ -78,9 +86,15 @@ pending state before the existing request-count assertion. No timeout or regress
 was relaxed. The 20-case local matrix and strict E2E typecheck passed after this setup change;
 the final PR head's hosted run is the authority for Linux WebKit qualification.
 
+The [hosted run of `6c129c5`](https://github.com/Protonmatter/weather-dashboard/actions/runs/34714863701)
+subsequently passed every applicable PR job, including WebKit and iPhone. Two duplicate P2
+review comments then identified bounded reconciliation starvation, addressed by `eb1ae83`.
+That earlier green run does not validate the reconciliation change or its documentation;
+the final PR head still requires its own completed checks and review before merge.
+
 ## Merge and delivery gates
 
-Before merging the documentation head of PR #10, verify that the head and base are still
+Before merging the final revision of PR #10, verify that the head and base are still
 the intended commits, automated review has completed, no actionable review threads remain,
 and every applicable CI job has completed successfully. Do not bypass failed checks or
 infer readiness from the application/test commit's earlier results. Provider-contract and
@@ -101,9 +115,18 @@ and their exact commit/artifact records for the final merge and deployment statu
 - Existing v1 archive data still occupies browser quota. There is no automatic migration
   or cleanup; rolling code back can reveal old v1 scores without making them comparable
   to the corrected v2 series. Preserve local evidence before clearing site data.
+- The cursor is scheduling metadata, not forecast evidence or a cross-tab lock. The cap
+  is five locations per pass; overlapping passes or separate tabs may still overlap work.
+  Reloads resume only persisted cursor progress. Failed archive writes can still prevent
+  newly filled reference values from being retained even when scheduling advances.
+- Reference acquisition retains `past_days=14`, with eligibility decided from the actual
+  returned timestamps and retrieval provenance. There is no exact fourteen-elapsed-day
+  age filter, which would incorrectly exclude part of a provider-local calendar window.
 - Controlled cancellation tests establish application state/cache behavior, not every
   real provider's abort timing. Screenshot success is a bounded live observation and does
   not establish continuous availability or physical-device qualification.
-- Rolling back this documentation revision changes Markdown and image assets only.
-  For application rollback, revert the intended application commit through review and CI;
-  retain the archive separation described in [the handoff](HANDOFF.md#storage-and-rollback-limits).
+- Documentation and screenshot edits can be rolled back independently. Reverting
+  `eb1ae83` restores the previous reconciliation scheduling while leaving v2 evidence and
+  the new cursor key in storage; prior code ignores that cursor. Application rollback
+  still requires review and CI and must retain the archive separation described in
+  [the handoff](HANDOFF.md#storage-and-rollback-limits).

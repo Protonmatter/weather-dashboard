@@ -3,10 +3,12 @@
 These PNG files are direct captures of the running Weather Dashboard production build.
 They were captured with Playwright CLI in Chrome 151.0.7922.174 on Windows on September 12,
 2026. The app was served by `npm run preview` at `http://127.0.0.1:4173/` from the artifact
-identified in [BUILD_STATE.md](../BUILD_STATE.md). Its entry was `index-B05xrsZh.js`, built
-from application source at `0a8de45`; the checkout's test/documentation head was `8eb002f`.
+identified in [BUILD_STATE.md](../BUILD_STATE.md). Its entry was `index-Ds4kO-jC.js`, built
+from application source at `eb1ae8337a26fc0d184402b2ecbfaf92512870fa`.
 
-The first-visit **Not now** action selected the default Palo Alto forecast. Actual
+The first-visit **Not now** action selected the default Palo Alto forecast. Initial point
+requests encountered aborts and an HTTP 503; the page retained its sample forecast with
+an explicit refresh-failed message. After using **Refresh forecast**, actual
 Open-Meteo point, ensemble, air-quality, and GFS map requests returned HTTP 200, and the UI
 identified live Open-Meteo data and 31 GFS ensemble members. No provider responses, weather
 values, browser time, labels, or application DOM were replaced for these captures. The
@@ -14,9 +16,9 @@ images were copied byte-for-byte from browser screenshots, without image editing
 
 | Image | Capture time (UTC) | Dimensions | View |
 | --- | --- | --- | --- |
-| [dashboard-desktop.png](dashboard-desktop.png) | 2026-09-12 19:15:58 | 1920 × 1080 | Desktop viewport at the page top |
-| [forecast-map.png](forecast-map.png) | 2026-09-12 19:16:40 | 1680 × 838 | Map card captured from the desktop page, pressure selected, forecast playback paused at the first frame |
-| [dashboard-mobile.png](dashboard-mobile.png) | 2026-09-12 19:16:43 | 390 × 844 | Same live session resized to a phone-width viewport |
+| [dashboard-desktop.png](dashboard-desktop.png) | 2026-09-12 20:04:44 | 1920 × 1080 | Desktop viewport at the page top |
+| [forecast-map.png](forecast-map.png) | 2026-09-12 20:05:02 | 1680 × 838 | Map card captured from the desktop page, pressure selected, forecast playback paused at the first frame |
+| [dashboard-mobile.png](dashboard-mobile.png) | 2026-09-12 20:05:06 | 390 × 844 | Same live session resized to a phone-width viewport |
 
 The map retains visible OpenStreetMap attribution. Its timestamp is the selected forecast
 valid time; it is distinct from the wall-clock screenshot time. The phone capture establishes
@@ -26,9 +28,9 @@ functional suite covers emulated device projects.
 ## Image identity
 
 ```text
-36d5bb24e129226c9668f4ac6e8f2691101b56337c8677e2f062a2b6d523b82a  dashboard-desktop.png
-dfcc4a8957aa8f6ac968de615f1345520807aee7cd750b66ab8d64b850a56562  forecast-map.png
-3de37160d51b4be4be007a463fc7a954d31c9afa2c8fd61e216a827a91660455  dashboard-mobile.png
+10dd84b293853e6e0ac4e6d40f49dc3b7ac025285e4ff04d3c4d74870a79d1d4  dashboard-desktop.png
+19ceb962ccb53fbdd68b7fc6725532f6ca07bf5c80d51cf546d7fb9030d50ab6  forecast-map.png
+ae4a2eef4854f28f42edbc17308a38ce86542beae38f0138374f415048cc7ee7  dashboard-mobile.png
 ```
 
 ## Reproduce the views

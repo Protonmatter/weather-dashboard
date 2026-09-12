@@ -8,8 +8,9 @@
 | Depends on | RFC 0001 §3 (advanced verification statistics) |
 
 **Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the PR 10
-application corrections and subsequent regression coverage. The `8eb002f` late map
-transport tests do not change this archive schema or its scoring conventions.
+application corrections and subsequent regression coverage. `eb1ae83` adds persisted,
+bounded reconciliation rotation; its cursor is separate from the sealed v2 evidence.
+The earlier `8eb002f` late map transport tests do not change scoring conventions.
 
 ## 1. Problem
 
@@ -57,6 +58,12 @@ mathematically invisible to scores. Retained v1 bytes also count against browser
 so the v2 record limit is not a guaranteed storage-size bound. At quota or when storage is
 disabled, new verification data may not persist while forecasts remain usable.
 
+`wx.verification.cursor.v1` holds one last-scheduled location key. It is request-scheduling
+metadata, separate from `ForecastRecord` and its immutable member/provenance fields.
+Successful writes retain progress across reloads; write failure keeps progress in the
+current session only. `clearArchive()` resets the in-session cursor and independently
+attempts to remove both the v2 archive and persisted cursor. It never removes legacy v1.
+
 ### 3.2 Dedup: skip, not backfill
 
 Records are sealed when displayed. If a valid hour is already archived without temperature,
@@ -71,6 +78,19 @@ not zero; a finite zero is valid. An already filled value is never overwritten. 
 with only temperature references outstanding remains eligible for reconciliation without
 requiring new precipitation forecasts. Values retrieved at or before their valid time stay
 ineligible even if the response is served from cache after that time.
+
+Each reconciliation pass sorts the pending location keys and selects at most five distinct
+locations, beginning after the last scheduled key and wrapping at the end. The cursor
+advances before I/O, so missing, failed, or out-of-window references cannot repeatedly
+exclude later pending locations. An already-aborted caller does not advance it. The cap is
+per pass, and separate tabs can overlap work; the cursor is not a cross-tab lock.
+
+Reference acquisition continues to request `past_days=14`. It does not apply an exact
+fourteen-elapsed-day cutoff to archived records or returned references: a provider-local
+calendar window can include an eligible returned instant older than that duration. The
+actual response timestamps and retrieval provenance remain authoritative. A scheduling
+advance or nonzero reconciliation result does not prove archive persistence when storage
+writes fail.
 
 ### 3.3 The unit trap
 

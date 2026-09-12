@@ -121,6 +121,24 @@ exact head being merged, rather than inferred from these point-in-time results.
   Rerun the 20-case Windows matrix and strict E2E typecheck; both passed. No timeout,
   cancellation assertion, cache check, or application code changed.
 
+## Verification reconciliation progress follow-up
+
+- [x] Correct repeated selection of the first five pending locations so missing or failed
+  references cannot prevent later locations from being reconciled. In `eb1ae83`, retain the
+  five-location limit per pass, sort locations deterministically, and advance a wrapping
+  cursor before provider I/O. Keep pending forecast evidence intact, including records
+  beyond fourteen elapsed days when the provider can still return a valid local-calendar
+  reference.
+- [x] Store scheduling progress separately in `wx.verification.cursor.v1`; keep session
+  progress when persistence fails and resume from the persisted value after reload. An
+  already-aborted caller does not consume a batch. Clearing the current archive also resets
+  the cursor while preserving the legacy v1 archive.
+- [x] Add nine regressions covering unfillable and old backlogs, module reload, storage
+  failure, bounded wraparound, failed locations, pre-aborted callers, archive clearing, and
+  returned older local-calendar references. The local unit run for this change produced
+  **418 passed / 11 live contracts skipped**. Earlier 409-test results above remain records
+  of their respective revisions; they are not the current suite total.
+
 Final review, hosted-check, merge, and deployment outcomes belong to the exact PR/main
 commit records linked from the build state; the completed local tasks do not substitute
 for those gates.

@@ -7,9 +7,10 @@
 | Supersedes | — |
 | Related | RFC 0001 §2 and §5; RFC 0003 |
 
-**Current build:** [Build state and evidence](../BUILD_STATE.md) records the PR 10
-application at `0a8de45` and the separate late-transport coverage at `8eb002f`, including
-validation limits. [RFC 0006](0006-unified-precipitation-timeline.md) extends the map with
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the current
+application revision, separate late-transport coverage, and validation limits. The map
+contracts below were reviewed on 2026-09-12 and remain unchanged by the later verification
+reconciliation rotation. [RFC 0006](0006-unified-precipitation-timeline.md) extends the map with
 the unified precipitation timeline without duplicating its forecast request.
 
 ## 1. Problem

@@ -7,9 +7,10 @@
 | Supersedes | — |
 | Implementation | Phases 1–4 implemented; library utilities and displayed metrics distinguished below |
 
-**Current build:** [Build state and evidence](../BUILD_STATE.md) tracks the PR 10
-application corrections and the separate late-transport regression coverage added in
-`8eb002f`. This RFC describes implementation contracts; it does not certify a deployment.
+**Current build:** [Build state and evidence](../BUILD_STATE.md) identifies the current
+application revision and its validation, including PR 10's verification reconciliation
+rotation and separate late-transport regression coverage. This RFC describes implementation
+contracts; it does not certify a deployment. Current contracts were reviewed on 2026-09-12.
 
 ## 1. Problem
 
@@ -107,6 +108,27 @@ needed.
 
 ROC/AUC and the clipped ignorance score remain library utilities, not additional visible
 panels or independently validated skill results.
+
+### 3.7 Bounded reconciliation progress
+
+Each reconciliation pass selects at most five distinct pending locations in deterministic
+sorted order, continuing after the preceding pass's last location and wrapping when needed.
+The cursor advances before provider I/O. Missing or failed references therefore cannot keep
+the same first five locations at the head of every pass and starve later eligible records.
+An already-aborted caller makes no request and does not advance the cursor.
+
+Scheduling progress is stored in `wx.verification.cursor.v1`, separately from sealed forecast
+evidence in `wx.verification.v2`. The session continues rotating if cursor persistence fails;
+a reload resumes from the last successfully persisted cursor. Clearing the current archive
+also clears this scheduling key and its session value, while preserving the legacy v1 archive.
+This is per-session scheduling with best-effort persistence, not a lock across browser tabs.
+
+Rotation does not delete unfilled records or classify them as unfillable solely because they
+are older than fourteen elapsed days. Provider lookback uses local calendar days; any returned
+reference that satisfies the existing timestamp and finite-value checks remains usable.
+Precipitation and temperature can still be filled independently. See
+[RFC 0002](0002-temperature-verification.md) for archive and reference provenance contracts
+and [build state](../BUILD_STATE.md) for the regression evidence at each revision.
 
 ## 4. Delivery pipeline (Phase 3)
 

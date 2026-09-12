@@ -37,6 +37,14 @@ Neither local screenshots nor historical test results establish hosted deploymen
 - Precipitation and temperature references fill independently; null/nonfinite values remain
   pending, finite zero is valid, and previously filled values are never overwritten.
   Sealed forecast members are never backfilled from a later forecast.
+- Reconciliation rotates through a sorted pending-location list, attempting at most five
+  distinct locations per pass. `wx.verification.cursor.v1` stores the last scheduled
+  location separately from sealed evidence; successful writes resume progress after reload,
+  and failed writes still advance the current session. An already-aborted call does not
+  claim a batch. The cap is per pass, and the cursor is not a cross-tab lock.
+- Reference requests retain `past_days=14`. Eligibility follows the actual returned
+  timestamps and original retrieval time, without an exact fourteen-elapsed-day cutoff
+  that could discard part of a provider-local calendar window.
 - Fair CRPS and empirical CRPS are separate. Hersbach sums to empirical CRPS, combining
   member-count groups by sample weight. `[60,64]` with reference `62` gives fair zero and
   empirical one. Spread/skill uses per-record `(n+1)/n` times sample member variance and is
@@ -73,12 +81,18 @@ artifact. Dependency audit or licence evidence failures must fail the gate.
 v2 retains at most 4,000 records from the last 30 days. v1 still consumes browser storage,
 and quota denial can prevent new scores from persisting without stopping forecast display.
 There is no automatic legacy cleanup or quota recovery. Browser site-data removal clears
-both series; preserve any needed local evidence before such an action.
+both series and `wx.verification.cursor.v1`; preserve needed local evidence first. The
+verification clear action resets the in-session cursor and independently attempts to remove
+v2 and its persisted cursor, leaving legacy v1 untouched. Unavailable storage can prevent
+either persisted removal or new reference/cursor writes. In-session scheduling progress
+does not guarantee that newly filled archive values were saved.
 
 Rolling application code back leaves v2 data intact. An older version may display its old
 v1 scores again; that is not a valid comparison with corrected v2 scores. Do not merge or
 rename the keys to simulate continuity. Release status, hosted checks, platform-specific
 visual results, and deployment evidence must be recorded separately for the exact artifact.
+Reverting only the bounded scheduling fix `eb1ae83` leaves v2 evidence compatible; the
+preceding implementation ignores the separate cursor key and resumes its old batch selection.
 
 ## Remediation coverage
 
@@ -217,7 +231,7 @@ journeys passed across Chromium, WebKit, iPhone and Android: replacement/retry d
 stationary-grid expiry, and retained current-viewport data after a failed refresh. The full
 unit/component suite passed 409 tests (11 separately selected live contracts skipped), and
 typecheck, build, startup smoke, bundle budgets and diff checks passed. Gzipped JavaScript is
-72.9 KiB initial and 103.5 KiB total, within the unchanged 73/105 KiB limits. The current entry
+72.9 KiB initial and 103.5 KiB total, within the unchanged 73/105 KiB limits. The `0a8de45` entry
 is `dist/assets/index-B05xrsZh.js`, SHA-256
 `e94654f3299452ea8b14d51484d78c7424a53e13e4f646f8ac34d4a5f6696e08`.
 The full hosted functional/visual suite passed on the preceding commit `521ffd9`; its results
@@ -242,7 +256,8 @@ All 20 targeted browser cases passed across Chromium, WebKit, iPhone and Android
 case/platform combinations and four existing debounce/failure journeys). The full unit suite
 passed 409 tests with 11 separately selected live contracts skipped. The E2E file passed a
 separate strict TypeScript check because application typecheck does not include `e2e/`.
-Application source and the `0a8de45` build artifact above are hash-verified unchanged.
+At that coverage-only stage, application source and the `0a8de45` build artifact above
+were hash-verified unchanged.
 
 Independent sensitivity checks used an ignored archive of that commit. Bypassing only
 the reducer's stale-abort guard made all three abort cases fail at their intended loading
@@ -279,8 +294,56 @@ retained the zero-width state or showed measurement arriving too late for its 40
 Commit `aa1f651` waits for the actual viewport, positive measured width, and loading state
 before the original request-count check. Existing cancellation, cache, request timing, and
 Retry assertions are unchanged; no timeout was increased. The 20-case Windows browser matrix
-and strict E2E typecheck passed afterward. Final hosted checks are recorded on the PR head.
-Application source, lockfile, and the screenshot build artifact are unchanged.
+and strict E2E typecheck passed afterward. The hosted run of `6c129c5` subsequently passed
+all applicable PR checks, including WebKit and iPhone. That setup/documentation stage kept
+the `0a8de45` application source, lockfile, and original screenshot artifact unchanged;
+the following reconciliation fix introduces a new application artifact.
+
+## PR 10 review follow-up: fair bounded reconciliation (eb1ae83)
+
+Two duplicate P2 review comments identified that taking the first five pending locations
+on every pass could indefinitely exclude a sixth location. The first five can remain
+pending because their references are missing, their provider requests fail, or their
+records are outside the returned history window. The fix sorts pending location keys and
+selects up to five distinct locations after the last scheduled key, wrapping at the end.
+It advances the cursor before awaiting I/O, so another pass in the same session moves on
+even when earlier requests are still pending. This does not provide cross-tab locking or
+a global five-request cap across overlapping passes.
+
+Scheduling metadata is one location key under `wx.verification.cursor.v1`; it does not
+modify sealed forecast members, valid times, reference provenance, or scoring conventions.
+Successful storage writes retain the cursor across reloads. If writes fail, the next pass
+still advances in the current session. Clearing the archive resets that session cursor and
+tries to remove both the v2 archive and persisted cursor independently. Legacy v1 stays
+untouched. Pre-aborted calls return before claiming a batch.
+
+The provider request remains `past_days=14`, and no exact elapsed-day age filter was added.
+A returned reference older than fourteen elapsed days can still be eligible within the
+provider's local-calendar response, subject to the existing valid-time and retrieval-time
+checks. Rotation prevents older or otherwise unfillable records from monopolizing the
+first batch without deleting those records or fabricating references.
+
+Nine regressions were added. Eight failed against the preceding implementation; all 34
+tests in `verify.test.ts` passed after the fix. Cases cover fresh and 20-day unfillable
+backlogs, failed requests, persisted reload progress, write failure, wraparound with no more
+than five distinct locations per pass, pre-aborted calls, cursor clearing, and an eligible
+returned reference older than fourteen elapsed days. Independent review ran all 60
+verification tests successfully. The full unit/component suite passed 418 tests with
+11 separately selected live contracts skipped; typecheck, build, bundle budgets, and real
+Chromium startup smoke also passed.
+
+The `eb1ae83` entry is `dist/assets/index-Ds4kO-jC.js`, SHA-256
+`49ec86d56bcbecadf80c113c08559ef01989c2f3084f93af22f5c48c1fb46b6c`.
+Gzipped JavaScript is 72.9 KiB initial and 103.7 KiB total, within unchanged 73/105 KiB
+ceilings. The dependency lockfile is unchanged. The three README screenshots were refreshed
+against this artifact; [capture provenance](screenshots/README.md) retains the initial
+provider failure and the successful UI refresh rather than implying uninterrupted availability.
+
+Reproduce the focused checks with `npm test -- src/lib/verification/__tests__/verify.test.ts`
+and `npm test -- src/lib/verification`; use the validation entry points above for the full
+suite and build gates. The preceding green hosted run does not validate this source change.
+The final PR commit requires its own completed hosted checks and review before merge;
+deployment remains a separate main-branch outcome.
 
 ## Changed-file inventory
 

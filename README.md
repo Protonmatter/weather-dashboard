@@ -9,8 +9,10 @@ Runs entirely in the browser. **No API keys, no backend, no server-side secrets.
 
 The September 12, 2026 build includes the forecast-time, missing-data, verification,
 and UI recovery corrections from [PR #10](https://github.com/Protonmatter/weather-dashboard/pull/10).
-Application behavior is pinned to `0a8de45`; `8eb002f` adds separate late transport-abort
-and canceled-response cache regressions. The package version remains `0.2.0`; Git commits
+Application behavior is pinned to `eb1ae83`, which rotates bounded verification work so
+unfillable older locations cannot repeatedly exclude later pending locations. `8eb002f`
+added separate late transport-abort and canceled-response cache regressions. The package
+version remains `0.2.0`; Git commits
 identify these build updates. See [Build state](docs/BUILD_STATE.md) for artifact identity,
 validation evidence, remaining limits, and the distinction between CI and deployment.
 
@@ -227,6 +229,14 @@ retrieval/sealing time, not an inferred model initialization time. New records r
 source identifier, precipitation interval start, and the original response retrieval time
 for each filled variable. Malformed numeric records are excluded at the storage boundary.
 
+**Bounded reconciliation.** Each pass attempts at most five distinct pending locations in
+sorted, rotating order. A separate browser-local cursor remembers the last scheduled
+location, so missing or failed references do not monopolize every pass. Successful cursor
+writes preserve progress across reloads; unavailable storage retains progress only in the
+current session. The five-location limit applies to each pass, not all tabs collectively.
+Reference requests still use `past_days=14`; the app does not discard an otherwise eligible
+returned reference solely because it is older than exactly fourteen elapsed days.
+
 **Limitations, stated plainly.** Open-Meteo's forecast endpoint with `past_days` supplies
 elapsed operational model values; these are not station measurements or an independent
 reanalysis validation. Scores reflect one browser's visited places and hours. They do not
@@ -310,9 +320,12 @@ list and onboarding choice; older app versions safely ignore both versioned keys
 The verification archive is also browser-local, under `wx.verification.v2`. It holds rounded
 location coordinates, member arrays, valid times, and reference/provenance values, retaining
 up to 4,000 records from the last 30 days. An existing `wx.verification.v1` is left untouched
-and still occupies storage. Clearing site data removes both; the verification clear action
-removes only v2. Storage denial or quota exhaustion can prevent new scores from persisting
-while the weather dashboard continues to work. There is no automatic legacy migration.
+and still occupies storage. `wx.verification.cursor.v1` stores one last-scheduled location
+key separately from sealed forecast evidence. Clearing site data removes all three keys;
+the verification clear action resets the session cursor and removes v2 and its persisted
+cursor when storage permits, leaving legacy v1 untouched. Storage denial or quota exhaustion
+can prevent new scores and cursor progress from persisting while weather display continues
+to work. There is no automatic legacy migration or cross-tab scheduling lock.
 
 ## Search
 
@@ -449,6 +462,12 @@ complete hour-ending precipitation windows, missing reference values that later 
 available, independent temperature backfill, cached values fetched before their valid time,
 legacy archive retention, changing member counts, an exact exchangeable ±1 spread–skill
 population, and the separate fair/empirical CRPS identities.
+Reconciliation regressions cover rotation past missing, unavailable, and failed locations,
+reload persistence, session progress when writes fail, five distinct locations per pass,
+wraparound, pre-aborted calls, cursor clearing, and eligible returned references older than
+fourteen elapsed days. The `eb1ae83` unit/component suite passed 418 tests; live contracts
+remain a separate run. [Build state](docs/BUILD_STATE.md) distinguishes this local evidence
+from the final PR commit's hosted checks.
 The map suite additionally covers projection round-trips and the antimeridian, adaptive
 grid bounds, missing-data interpolation, marching-squares saddles, H/L suppression,
 provider schema and unit drift, timeout-versus-cancellation fallback, bounded cache
