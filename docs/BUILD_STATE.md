@@ -92,6 +92,17 @@ review comments then identified bounded reconciliation starvation, addressed by 
 That earlier green run does not validate the reconciliation change or its documentation;
 the final PR head still requires its own completed checks and review before merge.
 
+The [run of `81c23b4`](https://github.com/Protonmatter/weather-dashboard/actions/runs/34716243883)
+finished green, and automated review completed without new findings. Its WebKit log still
+reported one retry in the existing map-replacement case: the initial pressure image did
+not appear within its readiness assertion, before any pan/debounce/failure checks ran.
+The successful job did not upload a failure trace, so the precise layout timing was not
+retained. That case now scrolls the mounted viewport and waits for positive measured width,
+matching the setup already used by the separate transport cases. All 20 targeted local
+browser cases and strict E2E typechecking passed after this test-only change. No timeout or
+regression assertion was relaxed; application code and screenshot artifact are unchanged.
+The merge gate requires the final head's browser run without this retry.
+
 ## Merge and delivery gates
 
 Before merging the final revision of PR #10, verify that the head and base are still

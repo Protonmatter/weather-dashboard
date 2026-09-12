@@ -365,9 +365,11 @@ test("review: a failed replacement map grid stops announcing loading", async ({ 
     })) });
   });
   await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(viewport).toHaveAttribute("data-viewport-width", /^[1-9]\d*$/);
   await expect(page.getByRole("img", { name: /Mean-sea-level pressure forecast/ })).toBeVisible();
   await page.clock.pauseAt(new Date(NOW.getTime() + 60_000));
-  const viewport = page.getByTestId("forecast-map-viewport");
   const loading = page.getByText("Loading forecast field…", { exact: true });
   await viewport.focus();
   await viewport.press("ArrowRight");

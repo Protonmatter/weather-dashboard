@@ -139,6 +139,13 @@ exact head being merged, rather than inferred from these point-in-time results.
   **418 passed / 11 live contracts skipped**. Earlier 409-test results above remain records
   of their respective revisions; they are not the current suite total.
 
+- [x] Inspect the full `81c23b4` hosted log despite its green conclusion: one existing
+  WebKit map-replacement case retried at initial image readiness before its behavioral
+  assertions. Add mounted-viewport scrolling and a positive-width check to that case,
+  preserving its timeouts, debounce boundaries, failure, and Retry assertions. Rerun all
+  20 targeted local browser cases and strict E2E typechecking; both passed. Application
+  source and screenshot artifact are unchanged. Require a clean final-head browser run.
+
 Final review, hosted-check, merge, and deployment outcomes belong to the exact PR/main
 commit records linked from the build state; the completed local tasks do not substitute
 for those gates.

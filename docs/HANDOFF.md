@@ -345,6 +345,26 @@ suite and build gates. The preceding green hosted run does not validate this sou
 The final PR commit requires its own completed hosted checks and review before merge;
 deployment remains a separate main-branch outcome.
 
+## Final WebKit bootstrap follow-up
+
+The `81c23b4` hosted run completed successfully and automated review found no new issues.
+The complete log nevertheless reported one flaky WebKit result in the existing
+`review: a failed replacement map grid stops announcing loading` case. It timed out at
+the initial pressure-image visibility assertion, before clock pausing or the actual
+pan/debounce/failure/Retry checks. The four separate late-transport cases passed.
+
+This older case still scrolled only the lazy map shell. It now scrolls the mounted viewport
+and waits for a positive `data-viewport-width` before the original image assertion, matching
+the readiness condition introduced for the separate transport tests. The successful hosted
+job did not upload failure artifacts, so its exact layout timing is not independently
+proven; the failure is consistent with the earlier traced lazy-layout race. No timeout,
+skip, cancellation assertion, debounce boundary, or Retry check changed.
+
+All 20 targeted browser cases passed locally across Chromium, WebKit, iPhone and Android
+afterward, and the standalone strict E2E TypeScript check passed. Application source,
+dependencies, and the screenshot build remain unchanged. The final head must finish CI
+and automated review without this retry before merge.
+
 ## Changed-file inventory
 
 The current PR revision changes 77 repository paths relative to reviewed main
