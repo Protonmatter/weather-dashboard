@@ -107,6 +107,12 @@ async function bootDeferredMap(page: Page): Promise<void> {
   }, BASE);
   await boot(page);
   await page.getByTestId("forecast-map-shell").scrollIntoViewIfNeeded();
+  // The lazy shell can intersect before WebKit has laid out the mounted map.
+  // A measured viewport and pending state must exist before awaiting transport.
+  const viewport = page.getByTestId("forecast-map-viewport");
+  await viewport.scrollIntoViewIfNeeded();
+  await expect(viewport).toHaveAttribute("data-viewport-width", /^[1-9]\d*$/);
+  await expect(page.getByText("Loading forecast field…", { exact: true })).toBeVisible();
   await expect.poll(() => mapTransports(page)).toHaveLength(1);
   // Shift the wall clock without firing the outstanding transport's timeout.
   await page.clock.setFixedTime(new Date(NOW.getTime() + 60_000));
