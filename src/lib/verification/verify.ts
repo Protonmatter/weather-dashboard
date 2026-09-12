@@ -2,6 +2,8 @@ import { fetchJsonWithMetadata } from "../http";
 import { MEASURABLE_HOURLY } from "../ensemble";
 import {
   loadArchive,
+  loadReconciliationCursor,
+  saveReconciliationCursor,
   applyObservations,
   verifiedRecords,
   tempVerifiedRecords,
@@ -141,16 +143,25 @@ function pendingLocations(archive: readonly ForecastRecord[]): string[] {
   return [...locs];
 }
 
-/** Fetch observations for every location with unscored elapsed forecasts. */
+/** Fetch at most five pending locations, rotating past missing or failed references. */
 export async function reconcile(signal?: AbortSignal): Promise<number> {
+  if (signal?.aborted) return 0;
   const archive = loadArchive();
-  const locs = pendingLocations(archive);
+  const locs = pendingLocations(archive).sort();
   if (locs.length === 0) return 0;
+
+  const cursor = loadReconciliationCursor();
+  const next = locs.findIndex(loc => loc > cursor);
+  const start = next < 0 ? 0 : next;
+  const batch = [...locs.slice(start), ...locs.slice(0, start)].slice(0, 5);
+  // Claim before awaiting I/O so overlapping passes in this session advance too.
+  // Missing references (including those beyond past_days) must not monopolize a batch.
+  saveReconciliationCursor(batch[batch.length - 1]!);
 
   const merged = new Map<string, ObservedHour>();
 
   await Promise.allSettled(
-    locs.slice(0, 5).map(async (loc) => {
+    batch.map(async (loc) => {
       const [latStr, lonStr] = loc.split(",");
       const lat = Number.parseFloat(latStr ?? "");
       const lon = Number.parseFloat(lonStr ?? "");

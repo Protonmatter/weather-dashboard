@@ -42,6 +42,10 @@ export interface ForecastRecord {
 // v1 may contain shifted timestamps and nulls converted to zero. Preserve it untouched:
 // corrected scores start with a new series rather than reinterpreting old evidence.
 const KEY = "wx.verification.v2";
+const CURSOR_KEY = "wx.verification.cursor.v1";
+// Request scheduling is separate from sealed forecast evidence. Keep session
+// progress if storage writes fail; reloads resume from the last persisted cursor.
+let reconciliationCursor: string | undefined;
 const MAX_RECORDS = 4000;
 const MAX_AGE_MS = 30 * 24 * 3600e3;
 
@@ -103,6 +107,26 @@ export function saveArchive(records: readonly ForecastRecord[]): void {
     .sort((a, b) => a.valid - b.valid)
     .slice(-MAX_RECORDS);
   safeWrite(kept);
+}
+
+export function loadReconciliationCursor(): string {
+  if (reconciliationCursor === undefined) {
+    try {
+      reconciliationCursor = localStorage.getItem(CURSOR_KEY) ?? "";
+    } catch {
+      reconciliationCursor = "";
+    }
+  }
+  return reconciliationCursor;
+}
+
+export function saveReconciliationCursor(loc: string): void {
+  reconciliationCursor = loc;
+  try {
+    localStorage.setItem(CURSOR_KEY, loc);
+  } catch {
+    // The next pass in this session still advances when persistence is unavailable.
+  }
 }
 
 export interface RecordInput {
@@ -216,9 +240,12 @@ export const tempVerifiedRecords = (archive: readonly ForecastRecord[]): Forecas
   archive.filter((r) => validRecord(r) && r.live && r.tObserved !== undefined && (r.tMembers?.length ?? 0) > 1);
 
 export function clearArchive(): void {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    /* nothing to do */
+  reconciliationCursor = "";
+  for (const key of [KEY, CURSOR_KEY]) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* Try removing each independent key even when storage is unavailable. */
+    }
   }
 }

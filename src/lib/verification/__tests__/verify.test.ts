@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { scorecard, reconcile, MIN_CONFIDENT_SAMPLES } from "../verify";
-import { loadArchive, saveArchive, type ForecastRecord } from "../store";
+import { clearArchive, loadArchive, saveArchive, type ForecastRecord } from "../store";
 import { __resetHttpState } from "../../http";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -37,6 +37,7 @@ function record(overrides: Partial<ForecastRecord> = {}): ForecastRecord {
 
 beforeEach(() => {
   stubStorage();
+  clearArchive();
   __resetHttpState();
 });
 
@@ -183,6 +184,115 @@ describe("reconcile", () => {
   }
 
   const elapsedSeconds = (NOW - HOUR) / 1000;
+
+  function saveBacklog(ageHours = 1, count = 6): ForecastRecord[] {
+    const backlog = Array.from({ length: count }, (_, i) => record({
+      loc: `${10 + i}.00,0.00`,
+      valid: NOW - (i < 5 ? ageHours : 1) * HOUR,
+      tObserved: undefined,
+    }));
+    saveArchive(backlog);
+    return backlog;
+  }
+
+  function stubSixthLocation(): string[] {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(url);
+      const temperature = new URL(url).searchParams.get("latitude") === "15" ? 68 : null;
+      return { ok: true, json: async () => ({
+        hourly: { time: [elapsedSeconds], temperature_2m: [temperature] },
+      }) };
+    }));
+    return urls;
+  }
+
+  it.each([1, 20 * 24])("reaches the sixth location past five unfillable %i-hour backlogs", async (ageHours) => {
+    const backlog = saveBacklog(ageHours);
+    const urls = stubSixthLocation();
+    expect(await reconcile()).toBe(0);
+    expect(urls).toHaveLength(5);
+    __resetHttpState();
+    expect(await reconcile()).toBe(1);
+    expect(urls).toHaveLength(10);
+    expect(loadArchive().find(r => r.loc === "15.00,0.00")?.tObserved).toBe(68);
+    expect(loadArchive().filter(r => r.loc !== "15.00,0.00")).toEqual(backlog.slice(0, 5));
+  });
+
+  it("continues the pending-location rotation after a module reload", async () => {
+    saveBacklog();
+    stubSixthLocation();
+    expect(await reconcile()).toBe(0);
+    vi.resetModules();
+    const reloaded = await import("../verify");
+    expect(await reloaded.reconcile()).toBe(1);
+    expect(loadArchive().find(r => r.loc === "15.00,0.00")?.tObserved).toBe(68);
+  });
+
+  it("continues rotating in the session when cursor writes fail", async () => {
+    saveBacklog();
+    const urls = stubSixthLocation();
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("quota exceeded"); });
+    expect(await reconcile()).toBe(0);
+    // The return count and transport selection do not require a successful archive
+    // write under the same simulated quota failure.
+    expect(await reconcile()).toBe(1);
+    expect(urls.some(url => new URL(url).searchParams.get("latitude") === "15")).toBe(true);
+  });
+
+  it("wraps without exceeding five unique locations in a pass", async () => {
+    saveBacklog(1, 13);
+    const urls = stubFetch({ time: [] });
+    for (let pass = 0; pass < 3; pass++) {
+      __resetHttpState();
+      expect(await reconcile()).toBe(0);
+      const batch = urls.slice(pass * 5);
+      expect(batch).toHaveLength(5);
+      expect(new Set(batch).size).toBe(5);
+    }
+    expect(new Set(urls).size).toBe(13);
+  });
+
+  it("rotates past failed locations so a later location can be scored", async () => {
+    saveBacklog();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      new URL(url).searchParams.get("latitude") === "15"
+        ? { ok: true, json: async () => ({ hourly: { time: [elapsedSeconds], temperature_2m: [68] } }) }
+        : { ok: false, status: 400 }
+    ));
+    expect(await reconcile()).toBe(0);
+    expect(await reconcile()).toBe(1);
+    expect(loadArchive().find(r => r.loc === "15.00,0.00")?.tObserved).toBe(68);
+  });
+
+  it("does not consume the first batch when the caller is already aborted", async () => {
+    saveBacklog();
+    const urls = stubSixthLocation();
+    expect(await reconcile(AbortSignal.abort())).toBe(0);
+    expect(urls).toHaveLength(0);
+    expect(await reconcile()).toBe(0);
+    expect(await reconcile()).toBe(1);
+  });
+
+  it("clears persisted and session rotation when the forecast archive is cleared", async () => {
+    saveBacklog();
+    const urls = stubSixthLocation();
+    expect(await reconcile()).toBe(0);
+    clearArchive();
+    saveBacklog();
+    __resetHttpState();
+    expect(await reconcile()).toBe(0);
+    expect(urls.slice(0, 5)).toEqual(urls.slice(5));
+    expect(await reconcile()).toBe(1);
+  });
+
+  it("still fills a returned local-calendar reference older than fourteen elapsed days", async () => {
+    const valid = NOW - (14 * 24 + 12) * HOUR;
+    saveArchive([record({ valid, tObserved: undefined })]);
+    stubFetch({ time: [valid / 1000], temperature_2m: [68] });
+    expect(await reconcile()).toBe(1);
+    expect(loadArchive()[0]?.tObserved).toBe(68);
+  });
 
   it("requests both variables with Fahrenheit spelled out — the unit trap", () => {
     // Omitting temperature_unit silently yields Celsius and a plausibly-sized,
